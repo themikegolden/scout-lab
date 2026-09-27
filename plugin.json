@@ -1,0 +1,35 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "tough-stuff-gear-scout-lab",
+  "version": "22.0.0",
+  "description": "Tough Stuff Gear Scout Lab: collaboration scouting, Shopify mailroom, store health, and task history in ChatGPT and at a standalone dashboard URL.",
+  "keywords": [
+    "tough-stuff-gear",
+    "scout-lab",
+    "instagram",
+    "shopify",
+    "mailroom",
+    "research"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Scout Lab \u2014 Tough Stuff Gear",
+        "shortDescription": "Open and operate the Tough Stuff Gear Scout Lab dashboard.",
+        "longDescription": "A shared Scout Lab interface that runs as a fullscreen ChatGPT app and as a standalone browser dashboard using the same backend and data.",
+        "developerName": "Tough Stuff Gear",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "brandColor": "#E8650A",
+        "defaultPrompt": [
+          "Open Scout Lab.",
+          "Show me the latest Scout Lab mailroom updates.",
+          "Open the IG collaboration pipeline in Scout Lab."
+        ]
+      }
+    }
+  }
+}
