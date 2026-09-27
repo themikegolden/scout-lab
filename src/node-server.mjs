@@ -7,6 +7,12 @@ import worker from './worker.mjs';
 import { PgD1Adapter } from './pg-d1-adapter.mjs';
 import { fetchLocalStoreMail, publishLocalMailSnapshot } from './local-mail.mjs';
 
+try {
+  loadEnvFile(resolve(process.cwd(), '.env.local'));
+} catch (error) {
+  if (error?.code !== 'ENOENT') throw error;
+}
+
 const usingPostgres = Boolean(process.env.DATABASE_URL);
 const localMode = !usingPostgres;
 const PORT = Number(process.env.PORT || (localMode ? 3100 : 3000));
