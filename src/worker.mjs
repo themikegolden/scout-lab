@@ -36,8 +36,23 @@ function sameOrigin(request) {
   if (!origin) return true;
   try { return new URL(origin).host === new URL(request.url).host; } catch { return false; }
 }
+function basicOwnerAllowed(request, env) {
+  const expectedUser=trim(env.SCOUT_BASIC_USER,120);
+  const expectedPass=trim(env.SCOUT_BASIC_PASSWORD,500);
+  if(!expectedPass) return false;
+  const auth=request.headers.get('authorization')||'';
+  if(!auth.startsWith('Basic ')) return false;
+  try {
+    const decoded=atob(auth.slice(6));
+    const split=decoded.indexOf(':');
+    if(split<0) return false;
+    const user=decoded.slice(0,split), pass=decoded.slice(split+1);
+    return user===(expectedUser||'scout') && pass===expectedPass;
+  } catch (_) { return false; }
+}
 function ownerAllowed(request, env, mutate = false) {
   if (env.DEV_BYPASS_AUTH === '1') return true;
+  if (basicOwnerAllowed(request,env)) return !mutate || sameOrigin(request);
   const owner = trim(env.OWNER_EMAIL, 320).toLowerCase();
   const accessEmail = trim(request.headers.get('cf-access-authenticated-user-email'), 320).toLowerCase();
   if (!owner || !accessEmail || owner !== accessEmail) return false;
@@ -45,7 +60,8 @@ function ownerAllowed(request, env, mutate = false) {
   return true;
 }
 function requireOwner(request, env, mutate = false) {
-  return ownerAllowed(request, env, mutate) ? null : json({ error: 'Owner authentication is required.' }, 401);
+  if(ownerAllowed(request,env,mutate)) return null;
+  return new Response(JSON.stringify({error:'Owner authentication is required.'}),{status:401,headers:{...JSON_HEADERS,'www-authenticate':'Basic realm=\"Scout Lab\"'}});
 }
 function requirePublisher(request, env) {
   const expected = trim(env.SCOUT_PUBLISH_TOKEN, 500);
@@ -867,6 +883,8 @@ export default {
   async fetch(request, env, ctx) {
     const url=new URL(request.url);
     if(url.pathname==='/healthz')return json({ok:true,at:nowIso()});
+    const browserProtected=!!env.SCOUT_BASIC_PASSWORD && !url.pathname.startsWith('/mcp');
+    if(browserProtected && !basicOwnerAllowed(request,env)) return new Response('Scout Lab owner login required.',{status:401,headers:{'www-authenticate':'Basic realm=\"Scout Lab\"','cache-control':'no-store'}});
     if(url.pathname.startsWith('/api/'))return routeApi(request,env,ctx);
     if(url.pathname==='/mcp'||url.pathname.startsWith('/mcp/')) {
       // Write protection is a single-use run capability in the tool arguments. Add OAuth 2.1 at the transport layer before exposing this MCP endpoint beyond the trusted Workspace Agent connection.
