@@ -432,10 +432,17 @@ async function apiStore(request, env) {
 }
 async function apiIntegrations(request, env) {
   const denied = requireOwner(request, env); if (denied) return denied;
-  const gmailReady=!!(env.CHATGPT_AGENT_TRIGGER_ID && env.CHATGPT_WORKSPACE_AGENT_TOKEN);
+  const localGmailReady=bool(env.LOCAL_GMAIL_READY);
+  const workspaceGmailReady=!!(env.CHATGPT_AGENT_TRIGGER_ID && env.CHATGPT_WORKSPACE_AGENT_TOKEN);
+  const gmailReady=localGmailReady || workspaceGmailReady;
   return json({
     igScout:{ready:true,mode:'public_web_search',writesHistory:true,preservesLastGoodSnapshot:true},
-    chatgptAgent:{ready:gmailReady,mode:'workspace_agent_api',gmail:'read_only_via_workspace_agent',reason:gmailReady?null:'workspace_agent_access_token_missing'},
+    chatgptAgent:{
+      ready:gmailReady,
+      mode:localGmailReady?'local_gmail_imap':'workspace_agent_api',
+      gmail:localGmailReady?'read_only_local_imap':'read_only_via_workspace_agent',
+      reason:gmailReady?null:(String(env.DATABASE_MODE||'').toLowerCase().includes('sqlite')?'local_gmail_credentials_missing':'workspace_agent_access_token_missing')
+    },
     shopify:{ready:!!(env.SHOPIFY_SHOP && env.SHOPIFY_ADMIN_TOKEN),mode:env.SHOPIFY_SHOP && env.SHOPIFY_ADMIN_TOKEN?'admin_api':'not_configured'},
     database:{ready:true,mode:env.DATABASE_MODE || 'Cloudflare D1'}
   });
