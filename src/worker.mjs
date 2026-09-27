@@ -416,8 +416,10 @@ async function apiStore(request, env) {
 }
 async function apiIntegrations(request, env) {
   const denied = requireOwner(request, env); if (denied) return denied;
+  const gmailReady=!!(env.CHATGPT_AGENT_TRIGGER_ID && env.CHATGPT_WORKSPACE_AGENT_TOKEN);
   return json({
-    chatgptAgent:{ready:!!(env.CHATGPT_AGENT_TRIGGER_ID && env.CHATGPT_WORKSPACE_AGENT_TOKEN),mode:'workspace_agent_api',gmail:'agent-owned-or-end-user Gmail app'},
+    igScout:{ready:true,mode:'public_web_search',writesHistory:true,preservesLastGoodSnapshot:true},
+    chatgptAgent:{ready:gmailReady,mode:'workspace_agent_api',gmail:'read_only_via_workspace_agent',reason:gmailReady?null:'workspace_agent_access_token_missing'},
     shopify:{ready:!!(env.SHOPIFY_SHOP && env.SHOPIFY_ADMIN_TOKEN),mode:env.SHOPIFY_SHOP && env.SHOPIFY_ADMIN_TOKEN?'admin_api':'not_configured'},
     database:{ready:true,mode:env.DATABASE_MODE || 'Cloudflare D1'}
   });
@@ -433,6 +435,89 @@ async function apiUpdateLead(request, env, handle) {
   const row=await env.DB.prepare(`SELECT * FROM ig_leads WHERE normalized_handle=?`).bind(normalized).first();
   return json({record:mapIgRow(row)});
 }
+
+const SCOUT_SEARCHES = [
+  { query:'site:instagram.com everyday carry EDC organizer pouch creator', tag:'EDC / everyday carry', fit:'NomadRush Sling / organizer pouch' },
+  { query:'site:instagram.com bushcraft outdoor gear pack pouch creator', tag:'Bushcraft / outdoor', fit:'Pouches / outdoor carry' },
+  { query:'site:instagram.com backpack sling bag gear review creator', tag:'Packs / sling gear', fit:'NomadRush Sling' },
+  { query:'site:instagram.com knife gear photography EDC creator', tag:'Gear photography', fit:'Product photography / patches / pouches' }
+];
+const IG_RESERVED = new Set(['p','reel','reels','explore','accounts','stories','direct','about','developer','privacy','legal','web']);
+function decodeHtmlText(value) {
+  return String(value || '').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+}
+function titleFromHandle(handle) {
+  return handle.split(/[._-]+/).filter(Boolean).map((x)=>x.charAt(0).toUpperCase()+x.slice(1)).join(' ') || handle;
+}
+function collectInstagramUrls(html) {
+  const urls=[]; const seen=new Set(); const text=String(html||'');
+  const add=(raw)=>{
+    try {
+      let value=String(raw||'').replace(/&amp;/g,'&');
+      try { value=decodeURIComponent(value); } catch (_) {}
+      const u=new URL(value);
+      if(!/(^|\.)instagram\.com$/i.test(u.hostname)) return;
+      const handle=(u.pathname.split('/').filter(Boolean)[0]||'').toLowerCase();
+      if(!/^[a-z0-9._]{2,30}$/i.test(handle)||IG_RESERVED.has(handle)||seen.has(handle)) return;
+      seen.add(handle); urls.push({handle,url:`https://www.instagram.com/${handle}/`});
+    } catch (_) {}
+  };
+  for(const m of text.matchAll(/https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9._]{2,30}[^\s"'<>]*/gi)) add(m[0]);
+  for(const m of text.matchAll(/[?&](?:uddg|q)=([^&"']+)/gi)) add(m[1]);
+  return urls;
+}
+async function searchPublicInstagram(query) {
+  const targets=[
+    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+    `https://www.bing.com/search?q=${encodeURIComponent(query)}`,
+    `https://www.google.com/search?q=${encodeURIComponent(query)}&num=10`
+  ];
+  let lastError='No search provider returned a usable result.';
+  for(const url of targets) {
+    try {
+      const response=await fetch(url,{headers:{'user-agent':'Mozilla/5.0 (compatible; ScoutLab/22.1; +https://scout-lab-production-ea82.up.railway.app)','accept':'text/html,application/xhtml+xml'},signal:AbortSignal.timeout(9000),redirect:'follow'});
+      if(!response.ok){lastError=`Search provider returned HTTP ${response.status}.`;continue;}
+      const html=await response.text(); const profiles=collectInstagramUrls(html);
+      if(profiles.length) return {profiles,searchUrl:url,provider:new URL(url).hostname};
+      lastError='Search completed but returned no Instagram profile links.';
+    } catch(error){ lastError=error?.message||String(error); }
+  }
+  throw new Error(lastError);
+}
+async function apiRunScout(request, env) {
+  const denied=requireOwner(request,env,true); if(denied)return denied;
+  const existing=await activeRunForKind(env,'ig_scout'); if(existing)return json({run:mapRun(existing),deduplicated:true},202);
+  const body=await request.json().catch(()=>({})); const requestedAt=safeIso(body?.requestedAt,nowIso()); const id=randomId('run'); const started=nowIso();
+  await insertRun(env,{id,kind:'ig_scout',trigger:'dashboard_button',source:'public_web_search',status:'running',requestedAt,startedAt:started,summary:'Scout public-web creator research started.'});
+  try {
+    const settled=await Promise.allSettled(SCOUT_SEARCHES.map(async(spec)=>({spec,result:await searchPublicInstagram(spec.query)})));
+    const found=[]; const seen=new Set(); const evidenceAt=nowIso();
+    for(const item of settled){
+      if(item.status!=='fulfilled') continue;
+      const {spec,result}=item.value;
+      for(const profile of result.profiles){
+        if(seen.has(profile.handle)) continue; seen.add(profile.handle);
+        found.push({
+          handle:profile.handle,name:titleFromHandle(profile.handle),tag:spec.tag,
+          detail:`Public web search surfaced @${profile.handle} as a candidate related to ${spec.tag.toLowerCase()}. Review the current Instagram profile before outreach.`,
+          note:`TSG collaboration idea: evaluate ${spec.fit} for a product-seeded field photo, loadout, or short-form content concept.`,
+          sourceUrl:result.searchUrl,profileUrl:profile.url,followers:'',accountType:'Creator / maker candidate',contactUrl:'',
+          evidence:`Discovered through public web search on ${evidenceAt}. Current follower count, posting activity, contact route, and partnership interest are unverified.`,
+          productFit:spec.fit,estimatedCollabCost:'TBD',foundAt:evidenceAt
+        });
+        if(found.length>=12) break;
+      }
+      if(found.length>=12) break;
+    }
+    if(!found.length) throw new Error('Scout could not find verifiable Instagram profile links from the public search providers. The previous saved recommendations were preserved.');
+    const result=await publishIg(env,{records:found,source:'public_web_search',sourceTimestamp:evidenceAt,researchedAt:evidenceAt,trigger:'dashboard_button',startedAt:started},id);
+    return json({...result,runId:id,records:found.length},201);
+  } catch(error) {
+    await failRun(env,id,error.message,'Scout research failed; previous recommendations were preserved.');
+    return json({error:error.message,runId:id},502);
+  }
+}
+
 async function apiStartMailRefresh(request, env) {
   const denied = requireOwner(request, env, true); if (denied) return denied;
   const existing = await activeRunForKind(env,'mailroom'); if (existing) return json({run:mapRun(existing),deduplicated:true},202);
@@ -647,6 +732,21 @@ async function createMcpServer(env, mcpContext = {}) {
   );
 
   server.registerTool(
+    'run_ig_scout',
+    {
+      title: 'Run IG Scout',
+      description: 'Run Scout Lab public-web research for fresh EDC, outdoor, bushcraft, pack, and gear-photography Instagram leads; persist validated results and History.',
+      inputSchema: z.object({ requestedAt: z.string().optional() }), outputSchema: AnyJsonObject,
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true, idempotentHint: false },
+      _meta: { ui: { visibility: ['model','app'] }, 'openai/toolInvocation/invoking':'Scout is researching…', 'openai/toolInvocation/invoked':'Scout research complete' }
+    },
+    async ({requestedAt}) => {
+      const data=await callInternalApi(env,'/api/scout/run',{method:'POST',body:{requestedAt:requestedAt||nowIso()}});
+      return toolText(`Scout Lab research run ${data.runId||data.run?.id||''} finished.`,data);
+    }
+  );
+
+  server.registerTool(
     'refresh_mailroom',
     {
       title: 'Refresh Scout Lab Mailroom',
@@ -756,6 +856,7 @@ async function routeApi(request, env, ctx) {
   if(method==='GET'&&p==='/api/store-summary')return apiStore(request,env);
   if(method==='GET'&&p==='/api/history')return apiHistory(request,env);
   if(method==='GET'&&p==='/api/integrations')return apiIntegrations(request,env);
+  if(method==='POST'&&p==='/api/scout/run')return apiRunScout(request,env);
   if(method==='POST'&&(p==='/api/mailroom/refresh'||p==='/api/refresh'))return apiStartMailRefresh(request,env);
   if(method==='POST'&&p==='/api/task-results')return apiTaskResults(request,env);
   if(method==='PATCH'&&p.startsWith('/api/ig-leads/'))return apiUpdateLead(request,env,decodeURIComponent(p.slice('/api/ig-leads/'.length)));
