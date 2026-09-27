@@ -1,0 +1,25 @@
+{
+  "name": "scout-lab-tough-stuff-gear",
+  "version": "22.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build:widget && wrangler dev",
+    "deploy": "npm run build:widget && wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply scout-lab --local",
+    "db:migrate:remote": "wrangler d1 migrations apply scout-lab --remote",
+    "check": "npm run build:widget && node --check src/worker.mjs && node --check public/app-v21.js && node tests/static-check.mjs && node tests/v22-dual-surface-check.mjs",
+    "build:widget": "node scripts/build-chatgpt-widget.mjs",
+    "start": "node src/node-server.mjs",
+    "db:migrate:postgres": "node scripts/migrate-postgres.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "zod": "^4.1.0",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  },
+  "description": "Scout Lab dual-surface dashboard: standalone URL plus ChatGPT MCP App UI."
+}
