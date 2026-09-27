@@ -137,7 +137,7 @@ wss.on('connection', (socket) => {
 const server = createServer(async (req, res) => {
   try {
     const pathname = new URL(req.url || '/', 'http://localhost').pathname;
-    if (localMode && pathname === '/api/mailroom/refresh' && (req.method || 'GET').toUpperCase() === 'POST') {
+    if (localMode && !process.env.CHATGPT_AGENT_TRIGGER_ID && !process.env.CHATGPT_WORKSPACE_AGENT_TOKEN && process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD && pathname === '/api/mailroom/refresh' && (req.method || 'GET').toUpperCase() === 'POST') {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       let requestedAt = new Date().toISOString();
