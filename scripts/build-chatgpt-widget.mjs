@@ -82,6 +82,7 @@ const bridge = `<script id="scout-mcp-app-bridge">
       else if (method === 'GET' && url.pathname === '/api/store-summary') data = await callTool('get_store_health');
       else if (method === 'GET' && url.pathname === '/api/history') data = await callTool('get_task_history');
       else if (method === 'GET' && url.pathname === '/api/integrations') data = await callTool('get_integrations');
+      else if (method === 'POST' && url.pathname === '/api/scout/run') data = await callTool('run_ig_scout', parseBody(init));
       else if (method === 'POST' && (url.pathname === '/api/mailroom/refresh' || url.pathname === '/api/refresh')) data = await callTool('refresh_mailroom', parseBody(init));
       else if (method === 'PATCH' && url.pathname.startsWith('/api/ig-leads/')) {
         const handle = decodeURIComponent(url.pathname.slice('/api/ig-leads/'.length));
