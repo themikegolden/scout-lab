@@ -1,0 +1,43 @@
+/* Scout Lab v21 additions — preserves the existing room artwork and visual system. */
+.tabs{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+.tab{min-width:0}
+.status-row{align-items:flex-start!important;gap:14px;flex-wrap:wrap}
+.status-main{display:flex;flex-direction:column;gap:7px;min-width:min(100%,420px)}
+.status-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+.integration-pill{font:700 11px 'Barlow Condensed',sans-serif;letter-spacing:.08em;padding:6px 8px;border:2px solid #161412;background:#f4dcc8;box-shadow:2px 2px 0 #161412}
+.integration-pill.ready{background:#d9eed9}.integration-pill.waiting{background:#ffe0cc}
+.freshness-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0 14px}
+.freshness-item{border:2px solid #161412;background:#fffaf2;padding:8px 10px;box-shadow:3px 3px 0 #161412;min-width:0}
+.freshness-item span{display:block;font:700 10px 'Barlow Condensed',sans-serif;letter-spacing:.12em;color:#6c5c4f;margin-bottom:2px}
+.freshness-item strong{font:700 13px 'Barlow',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.store-health{border:2px solid #161412;background:#f8eee0;padding:11px;margin:0 0 14px;box-shadow:4px 4px 0 #161412}
+.store-health-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+.store-health-head strong{font:700 14px 'Barlow Condensed',sans-serif;letter-spacing:.08em}
+.store-health-head span{font:700 10px 'Barlow Condensed',sans-serif;letter-spacing:.08em;color:#6c5c4f}
+.health-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.health-card{border:2px solid #161412;background:white;padding:9px}
+.health-card span{display:block;font:700 10px 'Barlow Condensed',sans-serif;letter-spacing:.09em;color:#6c5c4f}
+.health-card strong{display:block;font:700 24px 'Anton',sans-serif;line-height:1.1;margin:2px 0}
+.health-card small{font:600 10px 'Barlow',sans-serif;color:#6c5c4f}
+.pipeline-card{grid-template-columns:42px minmax(0,1fr) auto!important}
+.pipeline-content{min-width:0}
+.pipeline-stage{font:700 10px 'Barlow Condensed',sans-serif;letter-spacing:.08em;border:1px solid #161412;padding:3px 5px;background:#f6efe3}
+.stage-new{background:#fff0d9}.stage-review{background:#e8eef7}.stage-shortlist{background:#e0f0e2}.stage-contacted{background:#fde6d4}.stage-outcome{background:#e7dfef}
+.pipeline-meta{display:flex;gap:6px;flex-wrap:wrap;margin:7px 0 9px}
+.pipeline-meta span{font:700 10px 'Barlow Condensed',sans-serif;letter-spacing:.05em;background:#efe5d6;border:1px solid #161412;padding:4px 6px}
+.pipeline-controls{display:grid;grid-template-columns:140px 1fr 130px 1.3fr auto;gap:7px;align-items:end;margin-top:8px}
+.field-control{display:flex;flex-direction:column;gap:3px;min-width:0}.field-control span{font:700 9px 'Barlow Condensed',sans-serif;letter-spacing:.1em;color:#5b5148}
+.field-control input,.field-control select{font:600 11px 'Barlow',sans-serif;border:1.5px solid #161412;background:#fff;padding:6px;min-width:0;width:100%}
+.mini-action{border:2px solid #161412;background:#ed6908;color:#fff;font:700 10px 'Barlow Condensed',sans-serif;letter-spacing:.08em;padding:7px 10px;box-shadow:2px 2px 0 #161412;cursor:pointer}
+.mini-action:disabled{opacity:.55;cursor:wait}
+.history-row{border:2px solid #161412;background:#fffaf2;padding:11px;margin-bottom:10px;box-shadow:3px 3px 0 #161412}
+.history-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;font:700 14px 'Barlow Condensed',sans-serif;letter-spacing:.08em}
+.history-status{font-size:10px;border:1px solid #161412;padding:3px 6px}.history-status.completed{background:#d9eed9}.history-status.failed{background:#ffd8d2}.history-status.running,.history-status.queued{background:#ffe5c8}
+.history-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:8px}.history-grid div{border:1px solid #b8a899;background:white;padding:6px;min-width:0}.history-grid span{display:block;font:700 9px 'Barlow Condensed',sans-serif;letter-spacing:.09em;color:#6c5c4f}.history-grid strong{display:block;font:700 11px 'Barlow',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.history-error{font:600 11px 'Barlow',sans-serif;color:#a42319;background:#fff0ee;border-left:3px solid #a42319;padding:7px}
+.mail-led{position:absolute;left:735px;top:188px;width:225px;height:46px;background:#17120f;border:4px solid #5a3b2c;box-shadow:4px 4px 0 rgba(0,0,0,.35),inset 0 0 0 2px #000;z-index:6;overflow:hidden;display:flex;align-items:center}
+.mail-led:before{content:'';position:absolute;inset:3px;background:repeating-linear-gradient(90deg,rgba(237,105,8,.08) 0 2px,transparent 2px 5px);pointer-events:none}
+.mail-led-track{white-space:nowrap;display:inline-block;min-width:100%;padding-left:100%;animation:mailLedScroll 15s linear infinite;font:700 15px/1 'Barlow Condensed',monospace;letter-spacing:.08em;color:#ff8b37;text-shadow:0 0 6px rgba(237,105,8,.8)}
+.stage.paused .mail-led-track{animation-play-state:paused}@keyframes mailLedScroll{from{transform:translateX(0)}to{transform:translateX(-200%)}}
+@media(max-width:900px){.pipeline-controls{grid-template-columns:1fr 1fr}.pipeline-controls .notes{grid-column:1/-1}.pipeline-controls .mini-action{grid-column:1/-1}.history-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.freshness-grid,.health-grid{grid-template-columns:1fr}.mail-led{left:735px;top:188px}}
+@media(max-width:560px){.tabs{grid-template-columns:1fr!important}.tab{border-right:0!important}.history-grid{grid-template-columns:1fr}.pipeline-controls{grid-template-columns:1fr}}
