@@ -12,6 +12,7 @@ const state = {
   store: { orders: { count: null }, paymentIssues: [], appAlerts: [], freshness: {}, loaded: false },
   integrations: { chatgptAgent: { ready: false }, shopify: { ready: false } },
   pendingMailRefresh: false,
+  liveConnected: false,
   paused: matchMedia('(prefers-reduced-motion: reduce)').matches
 };
 
@@ -104,10 +105,51 @@ function renderStatus() {
   const agentReady = !!state.integrations.chatgptAgent?.ready;
   $('agent-state').textContent = agentReady ? 'CHATGPT AGENT READY' : 'CHATGPT AGENT SETUP REQUIRED';
   $('agent-state').className = 'integration-pill ' + (agentReady ? 'ready' : 'waiting');
+  renderIntegrationMeta();
   $('error').hidden = true;
   const error = state.active === 'history' ? state.history.error : bucket?.error;
   if (error) { $('error').hidden = false; $('error').textContent = error; }
   renderFreshness();
+}
+
+
+function renderIntegrationMeta() {
+  const databaseMode = state.integrations.database?.mode || '';
+  const local = /sqlite/i.test(databaseMode);
+  if (local) {
+    $('mode').textContent = state.liveConnected ? 'LOCAL NODE + SQLITE · LIVE' : 'LOCAL NODE + SQLITE';
+    $('privacy').textContent = state.integrations.chatgptAgent?.ready
+      ? 'Local SQLite · live Node connection · ChatGPT bridge configured'
+      : 'Local SQLite · live Node connection · data stays on this computer';
+  } else {
+    $('mode').textContent = 'DATABASE + CHATGPT BRIDGE';
+    $('privacy').textContent = 'Database snapshots · ChatGPT task bridge · store integrations stay server-side';
+  }
+}
+
+let liveSocket = null;
+let liveRetry = null;
+function connectLive() {
+  if (!('WebSocket' in window)) return;
+  if (liveSocket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(liveSocket.readyState)) return;
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  liveSocket = new WebSocket(`${protocol}//${location.host}/live`);
+  liveSocket.addEventListener('open', () => {
+    state.liveConnected = true;
+    renderIntegrationMeta();
+  });
+  liveSocket.addEventListener('message', (event) => {
+    let message = null;
+    try { message = JSON.parse(event.data); } catch (_) {}
+    if (message?.type === 'refresh') refreshAll({ quiet: true });
+  });
+  liveSocket.addEventListener('close', () => {
+    state.liveConnected = false;
+    renderIntegrationMeta();
+    clearTimeout(liveRetry);
+    liveRetry = setTimeout(connectLive, 2000);
+  });
+  liveSocket.addEventListener('error', () => liveSocket?.close());
 }
 
 function stageClass(stage) {
@@ -355,6 +397,7 @@ new ResizeObserver(resize).observe($('viewport'));
 
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshAll({ quiet: true }); });
 setInterval(() => { if (!document.hidden && !state.pendingMailRefresh) refreshAll({ quiet: true }); }, CONFIG.pollMs);
-$('mode').textContent = 'DATABASE + CHATGPT BRIDGE';
-$('privacy').textContent = 'D1 snapshots · ChatGPT Workspace Agent mail refresh · read-only Gmail inside ChatGPT';
+$('mode').textContent = 'LOCAL NODE STARTING…';
+$('privacy').textContent = 'Connecting Scout Lab…';
+connectLive();
 motion(); resize(); render(); refreshAll();

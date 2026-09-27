@@ -1,144 +1,80 @@
-# Scout Lab v22 — ChatGPT App + Browser Dashboard
+# Scout Lab - Tough Stuff Gear
 
-Scout Lab v22 keeps the Tough Stuff Gear dashboard's existing pixel-art room, Scout animation, layout, tabs, styling, D1 data model, freshness rules, pipeline fields, Store Health, and History. The change in v22 is architectural: the **same dashboard can now run in two surfaces**.
+Scout Lab is the Tough Stuff Gear Pokelab dashboard: Scout patrols the pixel lab while the app tracks IG collaboration leads, Shopify Mailroom activity, Store Health, and task history.
 
-1. **Standalone browser URL** — `public/index.html` continues to use the existing `/api/*` routes.
-2. **Inside ChatGPT** — `public/chatgpt-widget.html` is generated from `public/index.html` and replaces browser API calls with MCP Apps `tools/call` requests.
+The primary development mode is now a **standalone local Node.js app**. The same visual source still contains the LED TOUGH STUFF GEAR sign, live clock, TSG FIELD SPECIMENS Poke display case, Scout sprite, Mailroom LED, and the IG / Mailroom / History tabs.
 
-There is one visual source of truth. Do not hand-edit `public/chatgpt-widget.html`; run `npm run build:widget` after changing `public/index.html`.
+## Start locally
 
-## Architecture
+Requirements: Git and Node.js 22 LTS or newer.
 
-```text
-                         ChatGPT
-                     Scout Lab plugin UI
-                            │
-                       MCP Apps bridge
-                            │
-                       /mcp tools
-                            │
-          ┌─────────────────┴─────────────────┐
-          │                                   │
-Browser URL                                ChatGPT UI
-public/index.html                   public/chatgpt-widget.html
-          │                                   │
-          └──────────── shared Worker ─────────┘
-                            │
-                      REST + MCP tools
-                            │
-                           D1
-                 ┌──────────┼──────────┐
-                 │          │          │
-              IG leads   Mailroom   History/
-                                    Store Health
-                            │
-                  ChatGPT Workspace Agent
-                            │
-                          Gmail
+```bash
+git clone https://github.com/themikegolden/scout-lab.git
+cd scout-lab
+npm install
+npm start
 ```
 
-The browser and ChatGPT versions read and write the same D1 records, so a lead moved to `Shortlist` in ChatGPT is also `Shortlist` at the browser URL, and a Mailroom refresh started from the browser appears in ChatGPT History.
-
-## ChatGPT UI behavior
-
-The generated ChatGPT component uses the open MCP Apps UI bridge:
-
-- `ui/initialize` initializes the component.
-- `tools/call` replaces the browser's REST requests.
-- The existing Scout Lab JavaScript does not need a second rendering implementation.
-- The existing FULL SCREEN button uses ChatGPT's `requestDisplayMode({ mode: "fullscreen" })` when embedded in ChatGPT.
-- `setOpenInAppUrl()` points ChatGPT's external/open-in-app control at `SCOUT_PUBLIC_URL`.
-
-## MCP tools
-
-The `/mcp` endpoint exposes the following Scout Lab tools:
-
-- `open_scout_lab` — opens the full interactive dashboard UI in ChatGPT.
-- `get_ig_recommendations` — current IG pipeline plus freshness.
-- `get_shopify_mailroom` — current saved store mail plus freshness.
-- `get_task_history` — task runs, outcomes, counts, and errors.
-- `get_store_health` — orders, payment issues, app alerts, freshness.
-- `get_integrations` — current ChatGPT/Shopify/database connection state.
-- `refresh_mailroom` — starts the real Workspace Agent mailroom flow.
-- `update_ig_lead` — updates stage, fit, cost, and notes.
-- `publish_mailroom_snapshot` — narrow run/nonce protected Mailroom publisher.
-- `publish_ig_snapshot` — publishes completed Scout research.
-- `publish_store_health` — publishes Store Health results.
-
-The first eight support normal Scout Lab interaction. Publisher tools are intended for trusted ChatGPT/task workflows.
-
-## Browser REST contract
-
-The browser surface retains the v21 API contract:
-
-- `GET /api/ig-recommendations`
-- `GET /api/shopify-mailroom`
-- `GET /api/store-summary`
-- `GET /api/history`
-- `GET /api/integrations`
-- `POST /api/mailroom/refresh`
-- `PATCH /api/ig-leads/:handle`
-- `POST /api/task-results` (protected publisher)
-
-## Data behavior retained from v21
-
-- Direct database-backed feed snapshots instead of source-file publishing.
-- Separate Last Researched, Last Published, and Last Checked timestamps.
-- IG stages: `New → Review → Shortlist → Contacted → Outcome`.
-- Product fit, estimated collaboration cost, and notes are durable and are not wiped by new research.
-- History records source, trigger, status, start/finish/check timestamps, checked/added/changed counts, summaries, and errors.
-- Store Health tracks orders, payment issues, and app alerts independently.
-- A failed refresh preserves the last good Mailroom snapshot.
-- Mailroom publisher uses a short-lived, single-use nonce tied to one task run.
-
-## Build and validation
+Open:
 
 ```text
-npm install
+http://localhost:3100
+```
+
+See [LOCAL_SETUP.md](LOCAL_SETUP.md) for the complete setup and restart instructions.
+
+## Standalone architecture
+
+```text
+GitHub
+  |
+  v
+Node.js local server
+  |-- public/index.html          Pokelab browser dashboard
+  |-- public/app-v21.js          UI behavior + live connection
+  |-- /api/*                     Scout Lab API
+  |-- /live                      WebSocket refresh channel
+  |-- /mcp                       existing MCP endpoint
+  `-- data/scout-lab.sqlite      local persistent database
+```
+
+When `DATABASE_URL` is absent, `src/node-server.mjs` automatically uses local SQLite and binds to `127.0.0.1:3100`. Local API access is trusted only while the server remains loopback-only.
+
+If `DATABASE_URL` is present, the same Node server can still use the existing Postgres adapter. This keeps a future VM/server migration straightforward without redesigning the dashboard.
+
+## Local persistence
+
+The first local start creates `data/scout-lab.sqlite` and imports the eight historical IG baseline candidates once. The database is ignored by Git and remains on the local computer.
+
+The browser also opens a WebSocket connection to `/live`. Successful write operations and scheduled task reconciliation send refresh signals immediately; the existing 15-second polling remains as a fallback.
+
+## ChatGPT integration
+
+The MCP and ChatGPT Workspace Agent code remains in the project, but a localhost-only server cannot receive cloud callbacks without an accessible endpoint. Local Scout Lab therefore works without ChatGPT credentials, while Mailroom agent refresh remains a separate integration step.
+
+A future local provider can call the OpenAI API directly from Node, or the same app can be moved to a user-controlled VM/server and exposed securely. Neither option requires redesigning the Pokelab frontend.
+
+## Important files
+
+- `public/index.html` - single visual source of truth for the Pokelab dashboard.
+- `public/app-v21.js` - dashboard data behavior, local live connection, and controls.
+- `src/node-server.mjs` - standalone Node HTTP/WebSocket server.
+- `src/sqlite-d1-adapter.mjs` - local SQLite adapter matching the existing data API.
+- `src/local-seed.mjs` - first-run baseline IG import.
+- `migrations/001_sqlite_local.sql` - local database schema.
+- `src/pg-d1-adapter.mjs` - optional Postgres adapter for future server hosting.
+- `src/worker.mjs` - shared Scout Lab REST/MCP business logic.
+- `LOCAL_SETUP.md` - computer setup instructions.
+
+## Validation
+
+```bash
 npm run build:widget
 npm run check
 ```
 
-`npm run dev` and `npm run deploy` rebuild the ChatGPT widget first.
+`public/chatgpt-widget.html` is generated from `public/index.html`; do not maintain a second visual implementation by hand.
 
-The v22 static checks verify that the generated ChatGPT UI contains the MCP Apps bridge and that the Worker exposes the required Scout Lab tools.
+## Security
 
-## Configuration
-
-Copy variable names from `.env.example` and keep secrets out of browser code.
-
-Required for the shared dashboard:
-
-- `OWNER_EMAIL`
-- D1 binding in `wrangler.jsonc`
-- `SCOUT_PUBLIC_URL` — stable browser URL, e.g. `https://scoutlab.toughstuffgear.com`
-- `SCOUT_MCP_URL` — normally `SCOUT_PUBLIC_URL + /mcp`
-
-Required for the real Mailroom task:
-
-- `CHATGPT_AGENT_TRIGGER_ID`
-- `CHATGPT_WORKSPACE_AGENT_TOKEN`
-
-Optional:
-
-- `SCOUT_PUBLISH_TOKEN` for protected non-MCP publishers
-- `SHOPIFY_SHOP`
-- `SHOPIFY_ADMIN_TOKEN`
-
-## ChatGPT connection
-
-See `CHATGPT_APP_SETUP.md` for the connection and testing sequence.
-
-## Security before public use
-
-The UI/tool architecture is complete, but the `/mcp` endpoint should use OAuth/authorization before public distribution. Do not expose write-capable MCP tools anonymously on a public production URL. Keep Cloudflare Access (or equivalent owner auth) on the browser surface and add a supported MCP OAuth flow for ChatGPT before making the endpoint broadly discoverable.
-
-## Files added in v22
-
-- `public/chatgpt-widget.html` — generated ChatGPT component; do not edit directly.
-- `scripts/build-chatgpt-widget.mjs` — builds the component from the normal dashboard.
-- `plugin.json` — portable Agent Plugin identity/metadata.
-- `mcp.json` — portable remote MCP declaration template.
-- `.codex-plugin/plugin.json` — compatibility manifest.
-- `CHATGPT_APP_SETUP.md` — ChatGPT test/setup steps.
-- `tests/v22-dual-surface-check.mjs` — dual-surface static checks.
+Local mode binds to `127.0.0.1` by default and does not require a login. If you later bind to `0.0.0.0` or expose Scout Lab on a VM/server, configure real authentication before making the API or MCP endpoint publicly reachable.
