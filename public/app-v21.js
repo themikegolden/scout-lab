@@ -105,10 +105,16 @@ function renderStatus() {
   $('dot').className = 'dot ' + displayState;
   $('run').hidden = state.active !== 'emails';
   $('run').disabled = state.pendingMailRefresh;
-  $('run').textContent = state.pendingMailRefresh ? 'STARTING CHATGPT…' : 'REFRESH EMAIL';
+  $('run').textContent = state.pendingMailRefresh ? 'CHECKING EMAIL…' : 'REFRESH EMAIL';
   const agentReady = !!state.integrations.chatgptAgent?.ready;
-  $('agent-state').textContent = agentReady ? 'CHATGPT AGENT READY' : 'CHATGPT AGENT SETUP REQUIRED';
-  $('agent-state').className = 'integration-pill ' + (agentReady ? 'ready' : 'waiting');
+  const localMail = state.integrations.chatgptAgent?.mode === 'local_gmail_imap';
+  if (state.active === 'emails') {
+    $('agent-state').textContent = agentReady ? (localMail ? 'LOCAL GMAIL READY' : 'GMAIL BRIDGE READY') : (localDb ? 'LOCAL GMAIL SETUP REQUIRED' : 'GMAIL BRIDGE NOT CONNECTED');
+    $('agent-state').className = 'integration-pill ' + (agentReady ? 'ready' : 'waiting');
+  } else {
+    $('agent-state').textContent = agentReady ? 'CHATGPT AGENT READY' : 'CHATGPT AGENT SETUP REQUIRED';
+    $('agent-state').className = 'integration-pill ' + (agentReady ? 'ready' : 'waiting');
+  }
   renderIntegrationMeta();
   $('error').hidden = true;
   const error = state.active === 'history' ? state.history.error : bucket?.error;
@@ -344,10 +350,11 @@ async function saveLead(handle, button) {
 async function runMailRefresh() {
   if (state.pendingMailRefresh) return;
   state.pendingMailRefresh = true; state.emails.error = ''; render();
-  $('announce').textContent = 'Starting a ChatGPT mailroom task.';
+  const localMail = state.integrations.chatgptAgent?.mode === 'local_gmail_imap' || /sqlite/i.test(state.integrations.database?.mode || '');
+  $('announce').textContent = localMail ? 'Checking Gmail from this Mac.' : 'Starting a ChatGPT mailroom task.';
   try {
     const data = await request('/mailroom/refresh', { method: 'POST', body: JSON.stringify({ requestedAt: isoNow() }) });
-    $('announce').textContent = `ChatGPT mailroom run ${data.run?.id || ''} started.`;
+    $('announce').textContent = localMail ? 'Local Gmail refresh completed.' : `ChatGPT mailroom run ${data.run?.id || ''} started.`;
     state.active = 'history';
     await refreshAll({ quiet: true });
     const start = Date.now();
@@ -359,7 +366,7 @@ async function runMailRefresh() {
     }
   } catch (error) {
     state.emails.error = error.message;
-    $('announce').textContent = 'The ChatGPT mailroom task could not be started.';
+    $('announce').textContent = error.message || 'The Mailroom refresh could not be started.';
   } finally { state.pendingMailRefresh = false; await refreshAll({ quiet: true }); render(); }
 }
 
