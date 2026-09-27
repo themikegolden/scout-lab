@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
+import { loadEnvFile } from 'node:process';
 import { WebSocketServer, WebSocket } from 'ws';
 import worker from './worker.mjs';
 import { PgD1Adapter } from './pg-d1-adapter.mjs';
