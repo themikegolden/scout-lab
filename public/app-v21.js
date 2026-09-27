@@ -91,6 +91,8 @@ function statusText() {
   if (state.active === 'history') return 'TASK HISTORY';
   const bucket = state[state.active];
   if (!bucket.loaded) return 'LOADING…';
+  const localDb = /sqlite/i.test(state.integrations.database?.mode || '');
+  if (state.active === 'emails' && localDb && !state.integrations.chatgptAgent?.ready) return 'SHOPIFY MAILROOM · SETUP REQUIRED';
   const prefix = state.active === 'candidates' ? 'IG PIPELINE' : 'SHOPIFY MAILROOM';
   return `${prefix} · ${(bucket.control?.status || 'idle').toUpperCase()}`;
 }
@@ -98,7 +100,9 @@ function statusText() {
 function renderStatus() {
   $('status').textContent = statusText();
   const bucket = state.active === 'history' ? null : state[state.active];
-  $('dot').className = 'dot ' + (bucket?.control?.status || 'idle');
+  const localDb = /sqlite/i.test(state.integrations.database?.mode || '');
+  const displayState = state.active === 'emails' && localDb && !state.integrations.chatgptAgent?.ready ? 'idle' : (bucket?.control?.status || 'idle');
+  $('dot').className = 'dot ' + displayState;
   $('run').hidden = state.active !== 'emails';
   $('run').disabled = state.pendingMailRefresh;
   $('run').textContent = state.pendingMailRefresh ? 'STARTING CHATGPT…' : 'REFRESH EMAIL';
