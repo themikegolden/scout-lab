@@ -1,6 +1,6 @@
 {
   "name": "scout-lab-tough-stuff-gear",
-  "version": "23.0.0-local",
+  "version": "24.0.0-local",
   "private": true,
   "type": "module",
   "scripts": {
@@ -18,7 +18,9 @@
     "@modelcontextprotocol/server": "2.0.0",
     "zod": "^4.1.0",
     "pg": "^8.13.1",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "imapflow": "^1.0.181",
+    "mailparser": "^3.7.2"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
