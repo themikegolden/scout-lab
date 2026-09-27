@@ -4,6 +4,7 @@ import { resolve, extname, sep } from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import worker from './worker.mjs';
 import { PgD1Adapter } from './pg-d1-adapter.mjs';
+import { fetchLocalStoreMail, publishLocalMailSnapshot } from './local-mail.mjs';
 
 const usingPostgres = Boolean(process.env.DATABASE_URL);
 const localMode = !usingPostgres;
@@ -40,6 +41,7 @@ const env = new Proxy(process.env, {
   get(target, prop) {
     if (prop === 'DB') return DB;
     if (prop === 'DATABASE_MODE') return databaseMode;
+    if (prop === 'LOCAL_GMAIL_READY') return localMode && Boolean(target.GMAIL_USER && target.GMAIL_APP_PASSWORD) ? '1' : '';
     if (prop === 'DEV_BYPASS_AUTH' && localOnly && !target.DEV_BYPASS_AUTH) return '1';
     if (prop === 'SCOUT_PUBLIC_URL' && localMode && !target.SCOUT_PUBLIC_URL) return localUrl;
     if (prop === 'SCOUT_MCP_URL' && localMode && !target.SCOUT_MCP_URL) return `${localUrl}/mcp`;
@@ -128,6 +130,35 @@ wss.on('connection', (socket) => {
 const server = createServer(async (req, res) => {
   try {
     const pathname = new URL(req.url || '/', 'http://localhost').pathname;
+    if (localMode && pathname === '/api/mailroom/refresh' && (req.method || 'GET').toUpperCase() === 'POST') {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      let requestedAt = new Date().toISOString();
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+        if (body?.requestedAt && !Number.isNaN(Date.parse(body.requestedAt))) requestedAt = new Date(body.requestedAt).toISOString();
+      } catch (_) {}
+
+      try {
+        const records = await fetchLocalStoreMail({
+          user: process.env.GMAIL_USER,
+          appPassword: process.env.GMAIL_APP_PASSWORD,
+          limit: 4
+        });
+        const result = await publishLocalMailSnapshot(DB, records, requestedAt);
+        broadcast('refresh', { source: pathname });
+        res.statusCode = 200;
+        res.setHeader('content-type', 'application/json; charset=utf-8');
+        res.setHeader('cache-control', 'no-store');
+        return res.end(JSON.stringify(result));
+      } catch (error) {
+        res.statusCode = error?.code === 'LOCAL_GMAIL_NOT_CONFIGURED' ? 409 : 502;
+        res.setHeader('content-type', 'application/json; charset=utf-8');
+        res.setHeader('cache-control', 'no-store');
+        return res.end(JSON.stringify({ error: error?.message || 'Local Gmail refresh failed.' }));
+      }
+    }
+
     if (pathname.startsWith('/api/') || pathname === '/mcp' || pathname.startsWith('/mcp/') || pathname === '/healthz') {
       const request = await nodeRequestToWeb(req);
       const response = await worker.fetch(request, env, { waitUntil(promise) { Promise.resolve(promise).catch(() => {}); } });
