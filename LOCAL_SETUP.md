@@ -95,3 +95,21 @@ The following are ignored by Git and stay on your computer:
 - local log files
 
 Do not commit API keys, tokens, passwords, or your local SQLite database to GitHub.
+## Make REFRESH EMAIL work locally
+
+Scout Lab can read Gmail directly from your Mac in read-only IMAP mode. It does not send, delete, archive, label, or modify messages.
+
+1. In your Google Account, turn on 2-Step Verification if it is not already enabled.
+2. Create a Google **App Password** for Scout Lab.
+3. In the Scout Lab folder, create a file named `.env.local` with:
+
+```text
+GMAIL_USER=your-gmail-address
+GMAIL_APP_PASSWORD=your-16-character-app-password
+```
+
+4. Stop Scout Lab with `Control+C`.
+5. Run `npm start` again.
+6. Open the Mailroom tab and press **REFRESH EMAIL**.
+
+The app password stays in `.env.local`, which is ignored by Git and is not uploaded to GitHub.
