@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+const widget=fs.readFileSync('public/chatgpt-widget.html','utf8');
+const worker=fs.readFileSync('src/worker.mjs','utf8');
+const manifest=JSON.parse(fs.readFileSync('plugin.json','utf8'));
+const mcp=JSON.parse(fs.readFileSync('mcp.json','utf8'));
+const requiredWidget=['scout-mcp-app-bridge','ui/initialize','tools/call','requestDisplayMode','setOpenInAppUrl','IG RECOMMENDATIONS','SHOPIFY MAILROOM','HISTORY','SCOUT'];
+for(const token of requiredWidget) if(!widget.includes(token)) throw new Error(`widget missing ${token}`);
+const requiredWorker=['open_scout_lab','get_ig_recommendations','get_shopify_mailroom','get_task_history','get_store_health','get_integrations','refresh_mailroom','update_ig_lead','ui://scout-lab/dashboard-v22.html'];
+for(const token of requiredWorker) if(!worker.includes(token)) throw new Error(`worker missing ${token}`);
+if(manifest.name!=='tough-stuff-gear-scout-lab') throw new Error('plugin manifest name mismatch');
+if(mcp.mcpServers?.['scout-lab']?.type!=='streamable-http') throw new Error('mcp transport must be streamable-http');
+console.log('v22 dual-surface static checks passed');
