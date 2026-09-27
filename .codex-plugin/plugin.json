@@ -1,0 +1,6 @@
+{
+  "name": "tough-stuff-gear-scout-lab",
+  "version": "22.0.0",
+  "description": "Tough Stuff Gear Scout Lab ChatGPT app and browser dashboard.",
+  "mcpServers": "./mcp.json"
+}
