@@ -4,7 +4,7 @@ import { z } from 'zod/v4';
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
 const STAGES = new Set(['New', 'Review', 'Shortlist', 'Contacted', 'Outcome']);
 const ACTIVE = new Set(['queued', 'running']);
-const MAX_MAIL = 4;
+const MAX_MAIL = 5;
 const MAX_IG = 50;
 
 function json(data, status = 200, extra = {}) {
