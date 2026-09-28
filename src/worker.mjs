@@ -359,7 +359,7 @@ async function triggerWorkspaceAgent(env, runId, nonce, requestedAt) {
     'Requested at: ' + requestedAt,
     'After the Gmail search is complete, SEND exactly one new email from the connected Gmail account to: ' + relayTo,
     'The subject must be exactly: SCOUT LAB MAILROOM RESULT ' + runId,
-    'The email body must contain only these markers and one valid JSON object between them:',
+    'Send the relay email as plain text only, with no Markdown, no code fences, no signature, and no extra commentary. The email body must contain only these markers and one valid JSON object between them:',
     'SCOUT_LAB_MAILROOM_JSON_BEGIN',
     relayExample,
     'SCOUT_LAB_MAILROOM_JSON_END',
