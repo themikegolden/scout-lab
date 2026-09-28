@@ -5,7 +5,7 @@ import { loadEnvFile } from 'node:process';
 import { WebSocketServer, WebSocket } from 'ws';
 import worker from './worker.mjs';
 import { PgD1Adapter } from './pg-d1-adapter.mjs';
-import { fetchLocalStoreMail, publishLocalMailSnapshot, summarizeStoreMailWithOpenAI } from './local-mail.mjs';
+import { fetchLocalStoreMail, publishLocalMailSnapshot, summarizeStoreMailWithOpenAI, fetchChatGPTTaskSnapshot } from './local-mail.mjs';
 
 try {
   loadEnvFile(resolve(process.cwd(), '.env.local'));
@@ -134,9 +134,83 @@ wss.on('connection', (socket) => {
   socket.send(JSON.stringify({ type: 'connected', at: new Date().toISOString(), databaseMode }));
 });
 
+
+async function syncChatGPTTaskSnapshot(requestedAt = new Date().toISOString()) {
+  const snapshot = await fetchChatGPTTaskSnapshot({
+    user: process.env.GMAIL_USER,
+    appPassword: process.env.GMAIL_APP_PASSWORD
+  });
+
+  const source = 'chatgpt_connected_gmail_task';
+  const existing = await DB.prepare(
+    "SELECT run_id FROM feed_snapshots_v21 WHERE feed='emails' AND source=? AND source_timestamp=? ORDER BY id DESC LIMIT 1"
+  ).bind(source, snapshot.generatedAt).first();
+
+  if (existing?.run_id) {
+    return {
+      run: {
+        id: existing.run_id,
+        kind: 'mailroom',
+        trigger: 'chatgpt_task',
+        source,
+        status: 'completed',
+        requestedAt,
+        recordsChecked: snapshot.records.length,
+        recordsAdded: 0,
+        recordsChanged: 0,
+        summary: 'Latest ChatGPT Gmail snapshot is already loaded.',
+        error: null
+      },
+      records: snapshot.records,
+      alreadyLoaded: true
+    };
+  }
+
+  return publishLocalMailSnapshot(
+    DB,
+    snapshot.records,
+    requestedAt,
+    source,
+    snapshot.generatedAt
+  );
+}
+
 const server = createServer(async (req, res) => {
   try {
     const pathname = new URL(req.url || '/', 'http://localhost').pathname;
+    if (
+      localMode &&
+      process.env.SCOUT_MAILROOM_MODE === 'chatgpt_task_relay' &&
+      process.env.GMAIL_USER &&
+      process.env.GMAIL_APP_PASSWORD &&
+      pathname === '/api/mailroom/refresh' &&
+      (req.method || 'GET').toUpperCase() === 'POST'
+    ) {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      let requestedAt = new Date().toISOString();
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+        if (body?.requestedAt && !Number.isNaN(Date.parse(body.requestedAt))) {
+          requestedAt = new Date(body.requestedAt).toISOString();
+        }
+      } catch (_) {}
+
+      try {
+        const result = await syncChatGPTTaskSnapshot(requestedAt);
+        broadcast('refresh', { source: 'chatgpt-task-mailroom' });
+        res.statusCode = 200;
+        res.setHeader('content-type', 'application/json; charset=utf-8');
+        res.setHeader('cache-control', 'no-store');
+        return res.end(JSON.stringify(result));
+      } catch (error) {
+        res.statusCode = error?.code === 'CHATGPT_SNAPSHOT_NOT_FOUND' ? 409 : 502;
+        res.setHeader('content-type', 'application/json; charset=utf-8');
+        res.setHeader('cache-control', 'no-store');
+        return res.end(JSON.stringify({ error: error?.message || 'ChatGPT Mailroom snapshot could not be loaded.' }));
+      }
+    }
+
     if (
       localMode &&
       process.env.SCOUT_MAILROOM_MODE === 'openai_api' &&
@@ -233,6 +307,27 @@ server.on('upgrade', (req, socket, head) => {
   wss.handleUpgrade(req, socket, head, (client) => wss.emit('connection', client, req));
 });
 
+
+const chatgptTaskSnapshotTimer = setInterval(() => {
+  if (
+    localMode &&
+    process.env.SCOUT_MAILROOM_MODE === 'chatgpt_task_relay' &&
+    process.env.GMAIL_USER &&
+    process.env.GMAIL_APP_PASSWORD
+  ) {
+    syncChatGPTTaskSnapshot()
+      .then((result) => {
+        if (!result?.alreadyLoaded) broadcast('refresh', { source: 'chatgpt-task-mailroom-auto' });
+      })
+      .catch((error) => {
+        if (error?.code !== 'CHATGPT_SNAPSHOT_NOT_FOUND') {
+          console.warn('Scout Lab Mailroom auto-sync:', error?.message || error);
+        }
+      });
+  }
+}, 60_000);
+chatgptTaskSnapshotTimer.unref?.();
+
 const reconcileTimer = setInterval(() => {
   const pending = [];
   worker.scheduled?.({}, env, { waitUntil(promise) { pending.push(Promise.resolve(promise)); } });
@@ -253,6 +348,7 @@ server.listen(PORT, HOST, () => {
 for (const signal of ['SIGTERM', 'SIGINT']) {
   process.on(signal, async () => {
     clearInterval(reconcileTimer);
+    clearInterval(chatgptTaskSnapshotTimer);
     for (const client of wss.clients) client.close();
     wss.close();
     await DB.close().catch(() => {});
