@@ -33,8 +33,14 @@ if (tunnelProfile) {
 function stopTunnel() {
   if (tunnel && !tunnel.killed) tunnel.kill('SIGTERM');
 }
-process.once('SIGINT', stopTunnel);
-process.once('SIGTERM', stopTunnel);
+process.once('SIGINT', () => {
+  stopTunnel();
+  process.exit(130);
+});
+process.once('SIGTERM', () => {
+  stopTunnel();
+  process.exit(143);
+});
 process.once('exit', stopTunnel);
 
 await import('../src/node-server.mjs');
