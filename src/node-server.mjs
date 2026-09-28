@@ -48,7 +48,7 @@ const env = new Proxy(process.env, {
   get(target, prop) {
     if (prop === 'DB') return DB;
     if (prop === 'DATABASE_MODE') return databaseMode;
-    if (prop === 'LOCAL_GMAIL_READY') return localMode && Boolean(target.GMAIL_USER && target.GMAIL_APP_PASSWORD) ? '1' : '';
+    if (prop === 'LOCAL_GMAIL_READY') return localMode && target.SCOUT_MAILROOM_MODE === 'local_imap' && Boolean(target.GMAIL_USER && target.GMAIL_APP_PASSWORD) ? '1' : '';
     if (prop === 'DEV_BYPASS_AUTH' && localOnly && !target.DEV_BYPASS_AUTH) return '1';
     if (prop === 'SCOUT_PUBLIC_URL' && localMode && !target.SCOUT_PUBLIC_URL) return localUrl;
     if (prop === 'SCOUT_MCP_URL' && localMode && !target.SCOUT_MCP_URL) return `${localUrl}/mcp`;
@@ -137,7 +137,7 @@ wss.on('connection', (socket) => {
 const server = createServer(async (req, res) => {
   try {
     const pathname = new URL(req.url || '/', 'http://localhost').pathname;
-    if (localMode && !process.env.CHATGPT_AGENT_TRIGGER_ID && !process.env.CHATGPT_WORKSPACE_AGENT_TOKEN && process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD && pathname === '/api/mailroom/refresh' && (req.method || 'GET').toUpperCase() === 'POST') {
+    if (localMode && process.env.SCOUT_MAILROOM_MODE === 'local_imap' && !process.env.CHATGPT_AGENT_TRIGGER_ID && !process.env.CHATGPT_WORKSPACE_AGENT_TOKEN && process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD && pathname === '/api/mailroom/refresh' && (req.method || 'GET').toUpperCase() === 'POST') {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       let requestedAt = new Date().toISOString();
