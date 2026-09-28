@@ -191,14 +191,15 @@ export async function publishLocalMailSnapshot(db, records, requestedAt = new Da
   const now = new Date().toISOString();
   const runId = `run_local_mail_${randomUUID().replace(/-/g, '')}`;
   const researchedAt = sourceTimestamp ? new Date(sourceTimestamp).toISOString() : now;
+  const trigger = source === 'chatgpt_connected_gmail_task' ? 'chatgpt_task' : 'dashboard_button';
 
   await db.prepare(`INSERT INTO task_runs_v21
     (id,kind,trigger,source,status,requested_at,started_at,finished_at,checked_at,source_timestamp,records_checked,records_added,records_changed,summary,error,published_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .bind(
-      runId, 'mailroom', 'dashboard_button', source, 'completed',
+      runId, 'mailroom', trigger, source, 'completed',
       requestedAt, now, now, now, researchedAt, records.length, records.length, 0,
-      `Mailroom refresh completed: ${records.length} relevant store email${records.length === 1 ? '' : 's'} loaded.`,
+      `Mailroom refresh completed: ${records.length} recent email summar${records.length === 1 ? 'y' : 'ies'} loaded.`,
       null, now
     ).run();
 
@@ -233,7 +234,7 @@ export async function publishLocalMailSnapshot(db, records, requestedAt = new Da
     run: {
       id: runId,
       kind: 'mailroom',
-      trigger: 'dashboard_button',
+      trigger,
       source,
       status: 'completed',
       requestedAt,
