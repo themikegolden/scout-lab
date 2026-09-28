@@ -1,7 +1,14 @@
 import { execSync, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve, join } from 'node:path';
+
+const here=dirname(fileURLToPath(import.meta.url));
+const root=resolve(here,'..');
+const localTunnel=join(root,'bin','tunnel-client');
 
 function run(command) {
-  return execSync(command, { stdio: 'inherit', env: process.env });
+  return execSync(command, { stdio: 'inherit', env: process.env, cwd:root });
 }
 
 try {
@@ -14,12 +21,14 @@ try {
 
 let tunnel = null;
 const tunnelProfile = String(process.env.SCOUT_TUNNEL_PROFILE || '').trim();
+const tunnelCommand = existsSync(localTunnel) ? localTunnel : 'tunnel-client';
 
 if (tunnelProfile) {
   console.log(`Scout Lab: starting OpenAI Secure MCP Tunnel profile "${tunnelProfile}"...`);
-  tunnel = spawn('tunnel-client', ['run', '--profile', tunnelProfile], {
+  tunnel = spawn(tunnelCommand, ['run', '--profile', tunnelProfile], {
     stdio: 'inherit',
-    env: process.env
+    env: process.env,
+    cwd:root
   });
   tunnel.on('error', (error) => {
     console.warn(`Scout Lab: Secure MCP Tunnel could not start: ${error.message}`);
