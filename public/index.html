@@ -516,30 +516,46 @@ async function runScout() {
 
 async function runMailRefresh() {
   if (state.pendingMailRefresh) return;
-  state.pendingMailRefresh = true; state.emails.error = ''; render();
-  $('announce').textContent = 'Starting the Scout Lab Mailroom refresh.';
+  state.active = 'emails';
+  state.pendingMailRefresh = true;
+  state.emails.error = '';
+  render();
+  $('announce').textContent = 'ChatGPT is checking connected Gmail for Tough Stuff Gear store mail.';
   try {
     const data = await request('/mailroom/refresh', { method: 'POST', body: JSON.stringify({ requestedAt: isoNow() }) });
-    $('announce').textContent = `Mailroom run ${data.run?.id || data.runId || ''} started.`;
-    state.active = 'history';
+    const runId = data.run?.id || data.runId || '';
+    $('announce').textContent = runId ? `ChatGPT Mailroom run ${runId} is running.` : 'ChatGPT Mailroom is running.';
     await refreshAll({ quiet: true });
+
     const start = Date.now();
+    let terminal = null;
     while (Date.now() - start < 180000) {
-      await new Promise((r) => setTimeout(r, 4000));
+      await new Promise((r) => setTimeout(r, 3000));
       await refreshAll({ quiet: true });
-      const runId = data.run?.id || data.runId;
-      const run = runId ? state.history.records.find((x) => x.id === runId) : null;
-      if (!runId || (run && ['completed', 'failed'].includes(run.status))) break;
+      if (!runId) break;
+      terminal = state.history.records.find((x) => x.id === runId) || null;
+      if (terminal && ['completed', 'failed'].includes(terminal.status)) break;
+    }
+
+    await refreshAll({ quiet: true });
+    state.active = 'emails';
+    if (terminal?.status === 'failed') {
+      state.emails.error = terminal.error || 'ChatGPT could not complete the Mailroom refresh.';
+      $('announce').textContent = 'ChatGPT Mailroom refresh failed. The previous saved emails were preserved.';
+    } else if (terminal?.status === 'completed' || !runId) {
+      $('announce').textContent = 'ChatGPT Mailroom refresh completed and the Mailroom tab was updated.';
+    } else {
+      state.emails.error = 'ChatGPT is still working. This page will keep checking for the result.';
+      $('announce').textContent = 'ChatGPT Mailroom is still running.';
     }
   } catch (error) {
-    const message = String(error?.message || error || '');
     state.active = 'emails';
-    state.emails.error = message;
-    $('announce').textContent = 'Opening ChatGPT Scheduled so the Scout Lab Mailroom task can be run from ChatGPT.';
-    window.open('https://chatgpt.com/schedules', '_blank', 'noopener,noreferrer');
+    state.emails.error = String(error?.message || error || 'ChatGPT Mailroom backend is not connected.');
+    $('announce').textContent = 'The ChatGPT Mailroom backend could not start. Scout Lab stayed on this page.';
   } finally {
     state.pendingMailRefresh = false;
     await refreshAll({ quiet: true });
+    state.active = 'emails';
     render();
   }
 }
