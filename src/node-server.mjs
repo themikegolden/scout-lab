@@ -5,7 +5,7 @@ import { loadEnvFile } from 'node:process';
 import { WebSocketServer, WebSocket } from 'ws';
 import worker from './worker.mjs';
 import { PgD1Adapter } from './pg-d1-adapter.mjs';
-import { fetchLocalStoreMail, publishLocalMailSnapshot } from './local-mail.mjs';
+import { fetchLocalStoreMail, publishLocalMailSnapshot, waitForChatGPTMailroomRelay, publishChatGPTMailroomRelay, failChatGPTMailroomRelay } from './local-mail.mjs';
 
 try {
   loadEnvFile(resolve(process.cwd(), '.env.local'));
@@ -164,6 +164,46 @@ const server = createServer(async (req, res) => {
         res.setHeader('cache-control', 'no-store');
         return res.end(JSON.stringify({ error: error?.message || 'Local Gmail refresh failed.' }));
       }
+    }
+
+    if (
+      localMode &&
+      pathname === '/api/mailroom/refresh' &&
+      (req.method || 'GET').toUpperCase() === 'POST' &&
+      process.env.CHATGPT_AGENT_TRIGGER_ID &&
+      process.env.CHATGPT_WORKSPACE_AGENT_TOKEN &&
+      process.env.GMAIL_USER &&
+      process.env.GMAIL_APP_PASSWORD
+    ) {
+      const request = await nodeRequestToWeb(req);
+      const response = await worker.fetch(request, env, { waitUntil(promise) { Promise.resolve(promise).catch(() => {}); } });
+      const clone = response.clone();
+
+      if (response.ok) {
+        const data = await clone.json().catch(() => null);
+        const runId = data?.run?.id || data?.runId || null;
+
+        if (runId) {
+          queueMicrotask(async () => {
+            try {
+              const payload = await waitForChatGPTMailroomRelay({
+                user: process.env.GMAIL_USER,
+                appPassword: process.env.GMAIL_APP_PASSWORD,
+                runId,
+                timeoutMs: 150000
+              });
+              await publishChatGPTMailroomRelay(DB, payload);
+              broadcast('refresh', { source: 'chatgpt-gmail-relay', runId });
+            } catch (error) {
+              await failChatGPTMailroomRelay(DB, runId, error).catch(() => {});
+              broadcast('refresh', { source: 'chatgpt-gmail-relay-error', runId });
+              console.error('Scout Lab ChatGPT Mailroom relay failed:', error?.message || error);
+            }
+          });
+        }
+      }
+
+      return sendWebResponse(res, response);
     }
 
     if (pathname.startsWith('/api/') || pathname === '/mcp' || pathname.startsWith('/mcp/') || pathname === '/healthz') {
