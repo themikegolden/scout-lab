@@ -37,10 +37,10 @@ button[disabled]{cursor:wait;opacity:.65}
 .actor .nameplate{display:none}
 .stage.paused .actor{animation-play-state:paused}
 .room-status{position:absolute;left:14px;bottom:13px;z-index:15;padding:5px 8px;background:rgba(16,16,14,.84);border:1px solid rgba(255,255,255,.42);color:#fff;font-size:10px;letter-spacing:.06em;text-transform:uppercase;pointer-events:none}
-.mail-led{position:absolute;left:626px;top:625px;width:258px;height:40px;overflow:hidden;border-radius:2px;background:rgba(18,14,11,.97);border:2px solid #7c4d15;box-shadow:inset 0 0 0 1px rgba(246,141,0,.18),0 0 12px rgba(239,108,0,.16);z-index:16;display:flex;align-items:center;color:#ff8c1a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:23px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:0 10px}
-.mail-led-track{display:inline-flex;align-items:center;white-space:nowrap;will-change:transform;animation:led-marquee 12s linear infinite}
-.mail-led-track span{display:inline-block;padding-right:54px}
-#eastern-time{position:absolute;left:901px;top:404px;width:108px;height:48px;display:flex;align-items:center;justify-content:center;background:#140f0c;border:2px solid #8c5609;border-radius:2px;color:#ff8c1a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:18px;font-weight:900;letter-spacing:.02em;text-shadow:0 0 8px rgba(255,145,0,.38);box-shadow:inset 0 0 0 1px rgba(255,145,0,.08),0 0 10px rgba(239,108,0,.14);z-index:16}
+.mail-led{position:absolute;left:620px;top:469px;width:226px;height:32px;overflow:hidden;border:0;border-radius:1px;background:#1a120d;box-shadow:inset 0 0 0 1px rgba(91,54,25,.8);z-index:16;display:flex;align-items:center;color:#ff8613;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:19px;font-weight:900;letter-spacing:.075em;text-transform:uppercase;padding:0 7px}
+.mail-led-track{display:inline-flex;align-items:center;white-space:nowrap;will-change:transform;animation:led-marquee 10s linear infinite}
+.mail-led-track span{display:inline-block;padding-right:44px}
+#eastern-time{position:absolute;left:887px;top:310px;width:66px;height:32px;display:flex;align-items:center;justify-content:center;background:#17100c;border:0;border-radius:1px;color:#ff8613;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px;font-weight:900;letter-spacing:.01em;text-shadow:0 0 6px rgba(255,134,19,.45);box-shadow:inset 0 0 0 1px rgba(87,52,25,.7);z-index:16}
 .brand-logo{display:block;height:48px;width:auto}
 @keyframes led-marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 .stage.paused .mail-led-track{animation-play-state:paused}
@@ -213,8 +213,10 @@ const dateText = (value) => {
 function updateEasternClock() {
   const node = $('eastern-time');
   if (!node) return;
-  const value = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false }).format(new Date());
-  node.textContent = `ET ${value}`;
+  const now = new Date();
+  let value = new Intl.DateTimeFormat('en-US', { timeZone:'America/New_York', hour:'2-digit', minute:'2-digit', hour12:false }).format(now);
+  if (now.getSeconds() % 2) value = value.replace(':', ' ');
+  node.textContent = value;
 }
 
 function el(tag, className, text) {
@@ -586,30 +588,30 @@ motion(); resize(); render(); refreshAll();
   if (!actor || !sprite || !stage) return;
   const framePct = [0, 33.333, 66.666, 100];
   const rowPct = {down:0,left:33.333,right:66.666,up:100};
-  let pos = {x:470,y:640}, targetIndex = 0, frame = 0, frameClock = 0, last = performance.now(), facing = 'down';
+  let pos = {x:470,y:635}, targetIndex = 0, frame = 0, frameClock = 0, last = performance.now(), facing = 'down';
   let overrideTarget = null;
 
   // These waypoints stay in the clear floor aisles and only approach the office sections.
   const patrol = [
-    {x:470,y:640},
-    {x:470,y:560},
-    {x:410,y:505},
-    {x:350,y:445},
-    {x:355,y:330},
-    {x:375,y:270},
-    {x:505,y:270},
-    {x:610,y:270},
-    {x:620,y:345},
-    {x:610,y:455},
-    {x:575,y:525},
-    {x:505,y:575},
-    {x:400,y:560},
-    {x:340,y:500}
+    {x:470,y:635},
+    {x:470,y:575},
+    {x:455,y:520},
+    {x:445,y:465},
+    {x:430,y:410},
+    {x:420,y:350},
+    {x:415,y:290},
+    {x:470,y:260},
+    {x:520,y:280},
+    {x:535,y:335},
+    {x:535,y:395},
+    {x:520,y:455},
+    {x:500,y:515},
+    {x:475,y:575}
   ];
   const tabTargets = {
-    candidates:{x:375,y:270},
-    emails:{x:575,y:525},
-    history:{x:470,y:640}
+    candidates:{x:420,y:300},
+    emails:{x:520,y:500},
+    history:{x:470,y:635}
   };
 
   function setSprite(dir, idx) { sprite.style.backgroundPosition = `${framePct[idx]}% ${rowPct[dir]}%`; }
