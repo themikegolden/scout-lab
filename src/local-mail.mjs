@@ -187,10 +187,10 @@ export async function summarizeStoreMailWithOpenAI(records, {
   }));
 }
 
-export async function publishLocalMailSnapshot(db, records, requestedAt = new Date().toISOString(), source = 'local_gmail_imap') {
+export async function publishLocalMailSnapshot(db, records, requestedAt = new Date().toISOString(), source = 'local_gmail_imap', sourceTimestamp = null) {
   const now = new Date().toISOString();
   const runId = `run_local_mail_${randomUUID().replace(/-/g, '')}`;
-  const researchedAt = now;
+  const researchedAt = sourceTimestamp ? new Date(sourceTimestamp).toISOString() : now;
 
   await db.prepare(`INSERT INTO task_runs_v21
     (id,kind,trigger,source,status,requested_at,started_at,finished_at,checked_at,source_timestamp,records_checked,records_added,records_changed,summary,error,published_at)
