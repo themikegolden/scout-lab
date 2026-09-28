@@ -331,6 +331,24 @@ chatgptTaskSnapshotTimer.unref?.();
 const reconcileTimer = setInterval(() => {
   const pending = [];
   worker.scheduled?.({}, env, { waitUntil(promise) { pending.push(Promise.resolve(promise)); } });
+
+  if (
+    localMode &&
+    process.env.SCOUT_MAILROOM_MODE === 'chatgpt_task_relay' &&
+    process.env.GMAIL_USER &&
+    process.env.GMAIL_APP_PASSWORD
+  ) {
+    pending.push(
+      syncChatGPTTaskSnapshot(new Date().toISOString())
+        .then(() => broadcast('refresh', { source: 'chatgpt-task-auto-sync' }))
+        .catch((error) => {
+          if (error?.code !== 'CHATGPT_SNAPSHOT_NOT_FOUND') {
+            console.warn('Scout Lab Mailroom auto-sync:', error?.message || error);
+          }
+        })
+    );
+  }
+
   Promise.allSettled(pending).then(() => broadcast('refresh', { source: 'scheduled' })).catch(() => {});
 }, 60_000);
 reconcileTimer.unref?.();
