@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 92" role="img" aria-labelledby="title">
+<title id="title">Tough Stuff</title>
+<g fill="#fff">
+  <g transform="translate(6 8)">
+    <path d="M18 56 5 64l5 9 18-11 15 8 5-9-14-8 14-8-5-9-15 8-18-11-5 9 13 8z"/>
+    <path d="M67 56 80 64l-5 9-18-11-15 8-5-9 14-8-14-8 5-9 15 8 18-11 5 9-13 8z"/>
+    <circle cx="12" cy="37" r="8"/><circle cx="74" cy="37" r="8"/>
+    <path d="M24 24c4-12 12-18 25-18s21 6 25 18l5 18c3 14-9 25-30 25S16 56 19 42z"/>
+  </g>
+  <text x="96" y="63" font-family="Arial Black, Helvetica, Arial, sans-serif" font-size="47" font-weight="900" letter-spacing="-2.4">toughstuff</text>
+</g>
+<g fill="#121210" transform="translate(6 8)">
+  <ellipse cx="39" cy="34" rx="5" ry="4"/>
+  <ellipse cx="58" cy="34" rx="5" ry="4"/>
+  <ellipse cx="49" cy="47" rx="10" ry="8"/>
+  <circle cx="49" cy="44" r="3"/>
+  <path d="M62 24l10-8 4 5-8 10z"/>
+</g>
+</svg>
