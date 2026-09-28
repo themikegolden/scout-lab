@@ -5,7 +5,7 @@ import { loadEnvFile } from 'node:process';
 import { WebSocketServer, WebSocket } from 'ws';
 import worker from './worker.mjs';
 import { PgD1Adapter } from './pg-d1-adapter.mjs';
-import { fetchLocalStoreMail, publishLocalMailSnapshot } from './local-mail.mjs';
+import { fetchLocalStoreMail, publishLocalMailSnapshot, summarizeStoreMailWithOpenAI } from './local-mail.mjs';
 
 try {
   loadEnvFile(resolve(process.cwd(), '.env.local'));
@@ -137,6 +137,47 @@ wss.on('connection', (socket) => {
 const server = createServer(async (req, res) => {
   try {
     const pathname = new URL(req.url || '/', 'http://localhost').pathname;
+    if (
+      localMode &&
+      process.env.SCOUT_MAILROOM_MODE === 'openai_api' &&
+      process.env.GMAIL_USER &&
+      process.env.GMAIL_APP_PASSWORD &&
+      process.env.OPENAI_API_KEY &&
+      pathname === '/api/mailroom/refresh' &&
+      (req.method || 'GET').toUpperCase() === 'POST'
+    ) {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      let requestedAt = new Date().toISOString();
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+        if (body?.requestedAt && !Number.isNaN(Date.parse(body.requestedAt))) requestedAt = new Date(body.requestedAt).toISOString();
+      } catch (_) {}
+
+      try {
+        const candidates = await fetchLocalStoreMail({
+          user: process.env.GMAIL_USER,
+          appPassword: process.env.GMAIL_APP_PASSWORD,
+          limit: 12
+        });
+        const records = await summarizeStoreMailWithOpenAI(candidates, {
+          apiKey: process.env.OPENAI_API_KEY,
+          model: process.env.OPENAI_MAIL_MODEL || 'gpt-5-mini'
+        });
+        const result = await publishLocalMailSnapshot(DB, records, requestedAt, 'openai_responses_api+gmail_imap');
+        broadcast('refresh', { source: 'openai-mailroom' });
+        res.statusCode = 200;
+        res.setHeader('content-type', 'application/json; charset=utf-8');
+        res.setHeader('cache-control', 'no-store');
+        return res.end(JSON.stringify(result));
+      } catch (error) {
+        res.statusCode = 502;
+        res.setHeader('content-type', 'application/json; charset=utf-8');
+        res.setHeader('cache-control', 'no-store');
+        return res.end(JSON.stringify({ error: error?.message || 'OpenAI Mailroom refresh failed.' }));
+      }
+    }
+
     if (localMode && process.env.SCOUT_MAILROOM_MODE === 'local_imap' && !process.env.CHATGPT_AGENT_TRIGGER_ID && !process.env.CHATGPT_WORKSPACE_AGENT_TOKEN && process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD && pathname === '/api/mailroom/refresh' && (req.method || 'GET').toUpperCase() === 'POST') {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
