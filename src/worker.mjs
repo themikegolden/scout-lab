@@ -396,7 +396,14 @@ async function syncAgentRun(env, run) {
   else if (body.status === 'failed') await failRun(env, run.id, body?.error?.message || body?.error?.code || 'ChatGPT Workspace Agent run failed.');
   else if (body.status === 'completed') {
     const fresh = await env.DB.prepare(`SELECT status FROM task_runs_v21 WHERE id=?`).bind(run.id).first();
-    if (fresh?.status !== 'completed') await failRun(env, run.id, 'ChatGPT Workspace Agent completed without publishing a Mailroom snapshot.');
+    if (fresh?.status !== 'completed') {
+      if (trim(env.SCOUT_MAILROOM_MODE, 80) === 'workspace_agent_gmail_relay') {
+        await env.DB.prepare(`UPDATE task_runs_v21 SET status='running',checked_at=?,summary=? WHERE id=?`)
+          .bind(checked,'ChatGPT finished the Gmail search; Scout Lab is waiting for the private result relay.',run.id).run();
+      } else {
+        await failRun(env, run.id, 'ChatGPT Workspace Agent completed without publishing a Mailroom snapshot.');
+      }
+    }
   }
   return env.DB.prepare(`SELECT * FROM task_runs_v21 WHERE id=?`).bind(run.id).first();
 }
@@ -460,16 +467,18 @@ async function apiIntegrations(request, env) {
   const denied = requireOwner(request, env); if (denied) return denied;
   const localImapReady=bool(env.LOCAL_GMAIL_READY);
   const workspaceAgentReady=!!(env.CHATGPT_AGENT_TRIGGER_ID && env.CHATGPT_WORKSPACE_AGENT_TOKEN);
-  const mailMode=trim(env.SCOUT_MAILROOM_MODE,80) || 'workspace_agent';
+  const gmailRelayReady=workspaceAgentReady && !!(env.GMAIL_USER && env.GMAIL_APP_PASSWORD);
+  const mailMode=trim(env.SCOUT_MAILROOM_MODE,80) || 'workspace_agent_gmail_relay';
   const usingLocalImap=mailMode === 'local_imap' && localImapReady;
-  const ready=usingLocalImap || workspaceAgentReady;
+  const usingGmailRelay=mailMode === 'workspace_agent_gmail_relay';
+  const ready=usingLocalImap || (usingGmailRelay ? gmailRelayReady : workspaceAgentReady);
   return json({
     igScout:{ready:true,mode:'public_web_search',writesHistory:true,preservesLastGoodSnapshot:true},
     chatgptAgent:{
       ready,
-      mode:usingLocalImap?'local_gmail_imap':'workspace_agent_api',
+      mode:usingLocalImap?'local_gmail_imap':(usingGmailRelay?'workspace_agent_gmail_relay':'workspace_agent_api'),
       gmail:usingLocalImap?'read_only_local_imap':'read_only_via_chatgpt_connected_gmail',
-      reason:ready?null:'workspace_agent_backend_not_connected'
+      reason:ready?null:(usingGmailRelay?'gmail_relay_or_workspace_agent_missing':'workspace_agent_backend_not_connected')
     },
     shopify:{ready:!!(env.SHOPIFY_SHOP && env.SHOPIFY_ADMIN_TOKEN),mode:env.SHOPIFY_SHOP && env.SHOPIFY_ADMIN_TOKEN?'admin_api':'not_configured'},
     database:{ready:true,mode:env.DATABASE_MODE || 'Cloudflare D1'}
