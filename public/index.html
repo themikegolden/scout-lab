@@ -148,7 +148,7 @@ button[disabled]{cursor:wait;opacity:.65}
     <section class="data-area" aria-label="Scout Lab feeds">
       <div class="tabs" role="tablist" aria-label="Choose a Scout Lab feed">
         <button class="tab" data-feed="candidates" id="tab-candidates" role="tab" aria-selected="true" aria-controls="feed-panel">IG RECOMMENDATIONS <span class="count" id="count-candidates">0</span></button>
-        <button class="tab" data-feed="emails" id="tab-emails" role="tab" aria-selected="false" aria-controls="feed-panel" tabindex="-1">SHOPIFY MAILROOM <span class="count" id="count-emails">0</span></button>
+        <button class="tab" data-feed="emails" id="tab-emails" role="tab" aria-selected="false" aria-controls="feed-panel" tabindex="-1">MAILROOM <span class="count" id="count-emails">0</span></button>
         <button class="tab" data-feed="history" id="tab-history" role="tab" aria-selected="false" aria-controls="feed-panel" tabindex="-1">HISTORY <span class="count" id="count-history">0</span></button>
       </div>
       <div class="panel" id="feed-panel" role="tabpanel" aria-labelledby="tab-candidates">
@@ -284,7 +284,7 @@ function statusText() {
   if (state.active === 'history') return 'TASK HISTORY';
   const bucket = state[state.active];
   if (!bucket.loaded) return 'LOADING…';
-  const prefix = state.active === 'candidates' ? 'IG PIPELINE' : 'SHOPIFY MAILROOM';
+  const prefix = state.active === 'candidates' ? 'IG PIPELINE' : 'MAILROOM';
   return `${prefix} · ${(bucket.control?.status || 'idle').toUpperCase()}`;
 }
 
@@ -297,14 +297,14 @@ function renderStatus() {
   $('run-scout').disabled = state.pendingScout;
   $('run').disabled = state.pendingMailRefresh;
   $('run-scout').textContent = state.pendingScout ? 'SCOUTING…' : 'RUN SCOUT';
-  $('run').textContent = state.pendingMailRefresh ? 'CHECKING EMAIL…' : 'REFRESH EMAIL';
+  $('run').textContent = state.pendingMailRefresh ? 'LOADING EMAIL…' : 'REFRESH EMAIL';
   const scoutReady = state.integrations.igScout?.ready !== false;
   const gmailReady = !!state.integrations.chatgptAgent?.ready;
   if (state.active === 'candidates') {
     $('agent-state').textContent = scoutReady ? 'SCOUT WEB RESEARCH READY' : 'SCOUT RESEARCH OFFLINE';
     $('agent-state').className = 'integration-pill ' + (scoutReady ? 'ready' : 'waiting');
   } else if (state.active === 'emails') {
-    $('agent-state').textContent = gmailReady ? 'CHATGPT GMAIL BACKEND READY' : 'CHATGPT GMAIL BACKEND NOT CONNECTED';
+    $('agent-state').textContent = gmailReady ? 'CHATGPT GMAIL SYNC READY' : 'CHATGPT GMAIL SYNC NOT CONNECTED';
     $('agent-state').className = 'integration-pill ' + (gmailReady ? 'ready' : 'bridge');
   } else {
     $('agent-state').textContent = 'LIVE TASK HISTORY';
@@ -520,38 +520,20 @@ async function runMailRefresh() {
   state.pendingMailRefresh = true;
   state.emails.error = '';
   render();
-  $('announce').textContent = 'ChatGPT is checking connected Gmail for Tough Stuff Gear store mail.';
+  $('announce').textContent = 'Loading the latest Gmail summary snapshot created by ChatGPT.';
   try {
-    const data = await request('/mailroom/refresh', { method: 'POST', body: JSON.stringify({ requestedAt: isoNow() }) });
-    const runId = data.run?.id || data.runId || '';
-    $('announce').textContent = runId ? `ChatGPT Mailroom run ${runId} is running.` : 'ChatGPT Mailroom is running.';
-    await refreshAll({ quiet: true });
-
-    const start = Date.now();
-    let terminal = null;
-    while (Date.now() - start < 180000) {
-      await new Promise((r) => setTimeout(r, 3000));
-      await refreshAll({ quiet: true });
-      if (!runId) break;
-      terminal = state.history.records.find((x) => x.id === runId) || null;
-      if (terminal && ['completed', 'failed'].includes(terminal.status)) break;
-    }
-
+    const data = await request('/mailroom/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ requestedAt: isoNow() })
+    });
     await refreshAll({ quiet: true });
     state.active = 'emails';
-    if (terminal?.status === 'failed') {
-      state.emails.error = terminal.error || 'ChatGPT could not complete the Mailroom refresh.';
-      $('announce').textContent = 'ChatGPT Mailroom refresh failed. The previous saved emails were preserved.';
-    } else if (terminal?.status === 'completed' || !runId) {
-      $('announce').textContent = 'ChatGPT Mailroom refresh completed and the Mailroom tab was updated.';
-    } else {
-      state.emails.error = 'ChatGPT is still working. This page will keep checking for the result.';
-      $('announce').textContent = 'ChatGPT Mailroom is still running.';
-    }
+    const count = Array.isArray(data?.records) ? data.records.length : (state.emails.records?.length || 0);
+    $('announce').textContent = `Mailroom updated with ${count} recent email summar${count === 1 ? 'y' : 'ies'} from ChatGPT.`;
   } catch (error) {
     state.active = 'emails';
-    state.emails.error = String(error?.message || error || 'ChatGPT Mailroom backend is not connected.');
-    $('announce').textContent = 'The ChatGPT Mailroom backend could not start. Scout Lab stayed on this page.';
+    state.emails.error = String(error?.message || error || 'The latest ChatGPT Gmail snapshot is not available yet.');
+    $('announce').textContent = 'Scout Lab could not load a newer ChatGPT Gmail snapshot. The previous Mailroom data was preserved.';
   } finally {
     state.pendingMailRefresh = false;
     await refreshAll({ quiet: true });
