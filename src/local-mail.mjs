@@ -226,7 +226,7 @@ export async function publishLocalMailSnapshot(db, records, requestedAt = new Da
   await db.prepare(`INSERT INTO feed_snapshots_v21
     (feed,run_id,source,source_timestamp,researched_at,published_at,checked_at,record_count,records_json,created_at)
     VALUES ('emails',?,?,?,?,?,?,?,?,?)`)
-    .bind(runId, 'local_gmail_imap', researchedAt, researchedAt, now, now, records.length, JSON.stringify(records), now)
+    .bind(runId, source, researchedAt, researchedAt, now, now, records.length, JSON.stringify(records), now)
     .run();
 
   return {
@@ -234,7 +234,7 @@ export async function publishLocalMailSnapshot(db, records, requestedAt = new Da
       id: runId,
       kind: 'mailroom',
       trigger: 'dashboard_button',
-      source: 'local_gmail_imap',
+      source,
       status: 'completed',
       requestedAt,
       startedAt: now,
@@ -243,7 +243,7 @@ export async function publishLocalMailSnapshot(db, records, requestedAt = new Da
       recordsChecked: records.length,
       recordsAdded: records.length,
       recordsChanged: 0,
-      summary: `Loaded ${records.length} relevant store email${records.length === 1 ? '' : 's'} from local Gmail.`,
+      summary: `Loaded ${records.length} email summar${records.length === 1 ? 'y' : 'ies'} into Scout Lab.`,
       error: null
     },
     records
@@ -422,4 +422,109 @@ export async function failChatGPTMailroomRelay(db, runId, error) {
     SET status='failed',finished_at=?,checked_at=?,error=?
     WHERE id=? AND kind='mailroom' AND status IN ('queued','running')`)
     .bind(now,now,clean(error?.message || error || 'ChatGPT Mailroom relay failed.',1500),runId).run();
+}
+
+
+function parseChatGPTSnapshot(text) {
+  const raw = String(text || '');
+  const begin = 'SCOUT_LAB_MAILROOM_SNAPSHOT_BEGIN';
+  const end = 'SCOUT_LAB_MAILROOM_SNAPSHOT_END';
+  const a = raw.indexOf(begin);
+  const b = raw.indexOf(end);
+  if (a < 0 || b < 0 || b <= a) return null;
+  const jsonText = raw.slice(a + begin.length, b).trim();
+  let payload;
+  try { payload = JSON.parse(jsonText); } catch (_) { return null; }
+  if (!payload || !Array.isArray(payload.records)) return null;
+
+  const records = payload.records.slice(0, 5).map((r) => ({
+    gmailMessageId: clean(r.gmailMessageId, 255) || null,
+    subject: clean(r.subject, 350),
+    sender: clean(r.sender || r.from, 350),
+    from: clean(r.sender || r.from, 350),
+    summary: clean(r.summary, 1000),
+    category: clean(r.category || 'GENERAL', 80) || 'GENERAL',
+    tag: clean(r.category || 'GENERAL', 80) || 'GENERAL',
+    receivedAt: new Date(r.receivedAt || Date.now()).toISOString()
+  })).filter((r) => r.subject && r.sender && r.summary);
+
+  return {
+    version: Number(payload.version || 1),
+    generatedAt: new Date(payload.generatedAt || Date.now()).toISOString(),
+    records
+  };
+}
+
+async function findSnapshotInMailbox(client, mailboxPath, user) {
+  await client.mailboxOpen(mailboxPath, { readOnly: true });
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const uids = await client.search({ since }, { uid: true });
+  const recent = uids.slice(-100);
+  if (!recent.length) return null;
+
+  let best = null;
+  for await (const message of client.fetch(recent.join(','), {
+    envelope: true,
+    source: true,
+    internalDate: true,
+    uid: true
+  }, { uid: true })) {
+    const subject = clean(message.envelope?.subject || '', 500);
+    if (subject !== 'SCOUT LAB MAILROOM SNAPSHOT') continue;
+
+    const parsed = await simpleParser(message.source);
+    const sender = clean(parsed.from?.text || '', 500).toLowerCase();
+    if (sender && user && !sender.includes(String(user).toLowerCase())) continue;
+
+    const payload = parseChatGPTSnapshot(parsed.text || parsed.html || '');
+    if (!payload) continue;
+
+    const messageAt = parsed.date || message.internalDate || new Date(payload.generatedAt);
+    const candidate = {
+      ...payload,
+      snapshotMessageId: message.uid ? 'imap-uid-' + message.uid : null,
+      snapshotReceivedAt: new Date(messageAt).toISOString()
+    };
+
+    if (!best || Date.parse(candidate.snapshotReceivedAt) > Date.parse(best.snapshotReceivedAt)) {
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+export async function fetchChatGPTTaskSnapshot({ user, appPassword }) {
+  if (!user || !appPassword) {
+    const error = new Error('Scout Lab needs the Gmail address and a Google App Password to read the ChatGPT Mailroom snapshot.');
+    error.code = 'CHATGPT_SNAPSHOT_RELAY_NOT_CONFIGURED';
+    throw error;
+  }
+
+  const client = new ImapFlow({
+    host: 'imap.gmail.com',
+    port: 993,
+    secure: true,
+    auth: { user, pass: String(appPassword).replace(/\s+/g, '') },
+    logger: false
+  });
+
+  try {
+    await client.connect();
+
+    let snapshot = await findSnapshotInMailbox(client, 'INBOX', user).catch(() => null);
+    if (snapshot) return snapshot;
+
+    const mailboxes = await client.list().catch(() => []);
+    const allMail = mailboxes.find((m) => m?.specialUse === '\\All')?.path;
+    if (allMail && allMail !== 'INBOX') {
+      snapshot = await findSnapshotInMailbox(client, allMail, user).catch(() => null);
+      if (snapshot) return snapshot;
+    }
+
+    const error = new Error('No ChatGPT Mailroom snapshot has arrived yet. The ChatGPT Mailroom task runs hourly.');
+    error.code = 'CHATGPT_SNAPSHOT_NOT_FOUND';
+    throw error;
+  } finally {
+    try { await client.logout(); } catch (_) {}
+  }
 }
