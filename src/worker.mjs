@@ -450,15 +450,17 @@ async function apiStore(request, env) {
 }
 async function apiIntegrations(request, env) {
   const denied = requireOwner(request, env); if (denied) return denied;
-  const workspaceAgentReady=!!(env.CHATGPT_AGENT_TRIGGER_ID && env.CHATGPT_WORKSPACE_AGENT_TOKEN);
+  const mailMode=trim(env.SCOUT_MAILROOM_MODE,80) || 'openai_api';
+  const openaiReady=!!(env.OPENAI_API_KEY && env.GMAIL_USER && env.GMAIL_APP_PASSWORD);
+  const workspaceReady=!!(env.CHATGPT_AGENT_TRIGGER_ID && env.CHATGPT_WORKSPACE_AGENT_TOKEN);
+  const ready=mailMode==='openai_api' ? openaiReady : workspaceReady;
   return json({
     igScout:{ready:true,mode:'public_web_search',writesHistory:true,preservesLastGoodSnapshot:true},
     chatgptAgent:{
-      ready:workspaceAgentReady,
-      mode:'workspace_agent_direct_publish',
-      gmail:'read_only_via_chatgpt_connected_gmail',
-      output:'scout_lab_custom_app',
-      reason:workspaceAgentReady?null:'workspace_agent_backend_not_connected'
+      ready,
+      mode:mailMode,
+      gmail:mailMode==='openai_api'?'read_only_local_gmail+openai_responses_api':'read_only_via_chatgpt_connected_gmail',
+      reason:ready?null:(mailMode==='openai_api'?'openai_api_key_or_gmail_credentials_missing':'workspace_agent_backend_not_connected')
     },
     shopify:{ready:!!(env.SHOPIFY_SHOP && env.SHOPIFY_ADMIN_TOKEN),mode:env.SHOPIFY_SHOP && env.SHOPIFY_ADMIN_TOKEN?'admin_api':'not_configured'},
     database:{ready:true,mode:env.DATABASE_MODE || 'Cloudflare D1'}
