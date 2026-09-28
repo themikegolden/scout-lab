@@ -304,7 +304,7 @@ function renderStatus() {
     $('agent-state').textContent = scoutReady ? 'SCOUT WEB RESEARCH READY' : 'SCOUT RESEARCH OFFLINE';
     $('agent-state').className = 'integration-pill ' + (scoutReady ? 'ready' : 'waiting');
   } else if (state.active === 'emails') {
-    $('agent-state').textContent = gmailReady ? 'GMAIL BRIDGE READY' : 'GMAIL BRIDGE NOT CONNECTED';
+    $('agent-state').textContent = gmailReady ? 'CHATGPT GMAIL BACKEND READY' : 'CHATGPT GMAIL BACKEND NOT CONNECTED';
     $('agent-state').className = 'integration-pill ' + (gmailReady ? 'ready' : 'bridge');
   } else {
     $('agent-state').textContent = 'LIVE TASK HISTORY';
