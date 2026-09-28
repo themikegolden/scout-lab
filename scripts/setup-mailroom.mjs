@@ -17,10 +17,15 @@ function parseEnv(text='') {
 }
 
 function serialize(map) {
-  const keys=['SCOUT_MAILROOM_MODE','OPENAI_API_KEY','OPENAI_MAIL_MODEL','GMAIL_USER','GMAIL_APP_PASSWORD'];
-  const lines=['# Scout Lab private local configuration. Do not commit this file.'];
+  const keys=['SCOUT_MAILROOM_MODE','GMAIL_USER','GMAIL_APP_PASSWORD'];
+  const lines=[
+    '# Scout Lab private local configuration. Do not commit this file.',
+    '# ChatGPT reads/summarizes the source inbox; this Mac only reads the self-addressed snapshot email.'
+  ];
   for(const key of keys) if(map.get(key)) lines.push(key+'='+map.get(key));
-  for(const [key,value] of map) if(!keys.includes(key)) lines.push(key+'='+value);
+  for(const [key,value] of map) if(!keys.includes(key) && !['OPENAI_API_KEY','OPENAI_MAIL_MODEL','CHATGPT_AGENT_TRIGGER_ID','CHATGPT_WORKSPACE_AGENT_TOKEN','SCOUT_TUNNEL_PROFILE','SCOUT_TUNNEL_ID','CONTROL_PLANE_API_KEY'].includes(key)) {
+    lines.push(key+'='+value);
+  }
   return lines.join('\n')+'\n';
 }
 
@@ -42,41 +47,31 @@ async function ask(rl,label,current='',validate=()=>true,help='Value is required
 const values=parseEnv(existsSync(envPath)?await readFile(envPath,'utf8'):'');
 const rl=readline.createInterface({input:process.stdin,output:process.stdout});
 
-console.log('\nScout Lab Mailroom — no-agent setup');
-console.log('Gmail is read locally in read-only mode; OpenAI Responses API performs the email selection and summaries. This does not use Workspace Agent quota.\n');
-
-const apiKey=await ask(
-  rl,
-  'OpenAI API key (sk-...)',
-  values.get('OPENAI_API_KEY')||'',
-  v=>/^sk-/.test(v),
-  'Use an OpenAI Platform API key.'
-);
+console.log('\nScout Lab Mailroom — simple ChatGPT Gmail sync');
+console.log('ChatGPT summarizes your connected Gmail hourly. Scout Lab only reads the one private snapshot email ChatGPT sends back to the same inbox.\n');
 
 const gmailUser=await ask(
   rl,
-  'Gmail address',
+  'Gmail address connected to ChatGPT',
   values.get('GMAIL_USER')||'',
   v=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v),
-  'Enter the Gmail address to read.'
+  'Enter the Gmail address connected to ChatGPT.'
 );
 
 const appPassword=await ask(
   rl,
-  'Google App Password',
+  'Google App Password for reading the snapshot',
   values.get('GMAIL_APP_PASSWORD')||'',
   v=>String(v).replace(/\s+/g,'').length>=16,
   'Use a Google App Password, not your normal Google password.'
 );
 
-values.set('SCOUT_MAILROOM_MODE','openai_api');
-values.set('OPENAI_API_KEY',apiKey);
-values.set('OPENAI_MAIL_MODEL',values.get('OPENAI_MAIL_MODEL')||'gpt-5-mini');
+values.set('SCOUT_MAILROOM_MODE','chatgpt_task_relay');
 values.set('GMAIL_USER',gmailUser);
 values.set('GMAIL_APP_PASSWORD',appPassword);
 
 await writeFile(envPath,serialize(values),{mode:0o600});
 rl.close();
 
-console.log('\nSaved. This mode does not use Workspace Agents.');
-console.log('From now on, normal startup is only: npm start');
+console.log('\nSaved. No Workspace Agent, OpenAI API key, or MCP tunnel is required.');
+console.log('From now on, start Scout Lab with: npm start');
