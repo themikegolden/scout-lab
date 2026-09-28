@@ -145,3 +145,177 @@ export async function publishLocalMailSnapshot(db, records, requestedAt = new Da
     records
   };
 }
+
+
+function extractRelayJson(text, runId) {
+  const raw = String(text || '');
+  const beginMarker = 'SCOUT_LAB_MAILROOM_JSON_BEGIN';
+  const endMarker = 'SCOUT_LAB_MAILROOM_JSON_END';
+  const start = raw.indexOf(beginMarker);
+  const end = raw.indexOf(endMarker);
+  if (start < 0 || end < 0 || end <= start) return null;
+  const jsonText = raw.slice(start + beginMarker.length, end).trim();
+  let payload;
+  try { payload = JSON.parse(jsonText); } catch (_) { return null; }
+  if (!payload || String(payload.runId || '') !== String(runId || '')) return null;
+
+  const records = Array.isArray(payload.records) ? payload.records : [];
+  return {
+    runId: String(payload.runId),
+    researchedAt: payload.researchedAt || new Date().toISOString(),
+    records: records.slice(0, 4).map((r) => ({
+      gmailMessageId: clean(r.gmailMessageId, 255) || null,
+      subject: clean(r.subject, 350),
+      sender: clean(r.sender || r.from, 350),
+      from: clean(r.sender || r.from, 350),
+      summary: clean(r.summary, 1000),
+      category: clean(r.category || r.tag, 80) || 'STORE',
+      tag: clean(r.category || r.tag, 80) || 'STORE',
+      receivedAt: new Date(r.receivedAt || Date.now()).toISOString()
+    })).filter((r) => r.subject && r.sender && r.summary)
+  };
+}
+
+export async function waitForChatGPTMailroomRelay({
+  user,
+  appPassword,
+  runId,
+  timeoutMs = 150000,
+  pollMs = 3000
+}) {
+  if (!user || !appPassword) {
+    const error = new Error('ChatGPT Mailroom relay needs GMAIL_USER and GMAIL_APP_PASSWORD in .env.local.');
+    error.code = 'CHATGPT_MAILROOM_RELAY_NOT_CONFIGURED';
+    throw error;
+  }
+
+  const client = new ImapFlow({
+    host: 'imap.gmail.com',
+    port: 993,
+    secure: true,
+    auth: { user, pass: String(appPassword).replace(/\s+/g, '') },
+    logger: false
+  });
+
+  const expectedSubject = 'SCOUT LAB MAILROOM RESULT ' + runId;
+  const started = Date.now();
+  const since = new Date(Date.now() - 20 * 60 * 1000);
+
+  try {
+    await client.connect();
+    await client.mailboxOpen('INBOX', { readOnly: true });
+
+    while (Date.now() - started < timeoutMs) {
+      const uids = await client.search({ since }, { uid: true });
+      const recent = uids.slice(-50);
+      if (recent.length) {
+        for await (const message of client.fetch(recent.join(','), {
+          envelope: true,
+          source: true,
+          internalDate: true,
+          uid: true
+        }, { uid: true })) {
+          const subject = clean(message.envelope?.subject || '', 500);
+          if (subject !== expectedSubject) continue;
+
+          const parsed = await simpleParser(message.source);
+          const sender = clean(parsed.from?.text || '', 500).toLowerCase();
+          if (sender && !sender.includes(String(user).toLowerCase())) continue;
+
+          const payload = extractRelayJson(parsed.text || parsed.html || '', runId);
+          if (payload) return payload;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+  } finally {
+    try { await client.logout(); } catch (_) {}
+  }
+
+  const error = new Error('ChatGPT finished without a Mailroom relay email reaching Gmail before the dashboard timeout.');
+  error.code = 'CHATGPT_MAILROOM_RELAY_TIMEOUT';
+  throw error;
+}
+
+export async function publishChatGPTMailroomRelay(db, payload) {
+  const now = new Date().toISOString();
+  const runId = clean(payload?.runId, 200);
+  const researchedAt = new Date(payload?.researchedAt || now).toISOString();
+  const records = Array.isArray(payload?.records) ? payload.records.slice(0, 4) : [];
+
+  if (!runId) throw new Error('Mailroom relay is missing runId.');
+  const existing = await db.prepare("SELECT id FROM task_runs_v21 WHERE id=? AND kind='mailroom' LIMIT 1").bind(runId).first();
+  if (!existing) throw new Error('Mailroom relay does not match a pending Scout Lab run.');
+
+  for (const record of records) {
+    const messageKey = keyFor(record);
+    await db.prepare(\`INSERT INTO mail_messages
+      (message_key,gmail_message_id,subject,sender,summary,category,received_at,source_timestamp,run_id,first_seen_at,last_seen_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(message_key) DO UPDATE SET
+        gmail_message_id=excluded.gmail_message_id,
+        subject=excluded.subject,
+        sender=excluded.sender,
+        summary=excluded.summary,
+        category=excluded.category,
+        received_at=excluded.received_at,
+        source_timestamp=excluded.source_timestamp,
+        run_id=excluded.run_id,
+        last_seen_at=excluded.last_seen_at\`)
+      .bind(
+        messageKey,
+        record.gmailMessageId || null,
+        record.subject,
+        record.sender || record.from,
+        record.summary,
+        record.category || record.tag || 'STORE',
+        record.receivedAt,
+        researchedAt,
+        runId,
+        now,
+        now
+      ).run();
+  }
+
+  await db.batch([
+    db.prepare(\`INSERT INTO feed_snapshots_v21
+      (feed,run_id,source,source_timestamp,researched_at,published_at,checked_at,record_count,records_json,created_at)
+      VALUES ('emails',?,?,?,?,?,?,?,?,?)\`)
+      .bind(runId,'chatgpt_workspace_agent+gmail_relay',researchedAt,researchedAt,now,now,records.length,JSON.stringify(records),now),
+    db.prepare(\`UPDATE task_runs_v21 SET
+      status='completed',
+      source='chatgpt_workspace_agent+gmail_relay',
+      source_timestamp=?,
+      finished_at=?,
+      checked_at=?,
+      records_checked=?,
+      records_added=?,
+      records_changed=0,
+      summary=?,
+      error=NULL,
+      publish_nonce_hash=NULL,
+      publish_nonce_expires_at=NULL,
+      published_at=?
+      WHERE id=?\`)
+      .bind(
+        researchedAt,
+        now,
+        now,
+        records.length,
+        records.length,
+        'ChatGPT Gmail Mailroom refresh completed: ' + records.length + ' summarized email' + (records.length === 1 ? '' : 's') + ' received.',
+        now,
+        runId
+      )
+  ]);
+
+  return { runId, recordsChecked: records.length, publishedAt: now };
+}
+
+export async function failChatGPTMailroomRelay(db, runId, error) {
+  const now = new Date().toISOString();
+  await db.prepare(\`UPDATE task_runs_v21
+    SET status='failed',finished_at=?,checked_at=?,error=?
+    WHERE id=? AND kind='mailroom' AND status IN ('queued','running')\`)
+    .bind(now,now,clean(error?.message || error || 'ChatGPT Mailroom relay failed.',1500),runId).run();
+}
