@@ -20,10 +20,35 @@ try {
 }
 
 let tunnel = null;
+function stopTunnel() {
+  if (tunnel && !tunnel.killed) tunnel.kill('SIGTERM');
+}
+process.once('SIGINT', () => {
+  stopTunnel();
+  process.exit(130);
+});
+process.once('SIGTERM', () => {
+  stopTunnel();
+  process.exit(143);
+});
+process.once('exit', stopTunnel);
+
+// Start Scout Lab first so the private MCP endpoint is ready before tunnel-client connects.
+await import('../src/node-server.mjs');
+
 const tunnelProfile = String(process.env.SCOUT_TUNNEL_PROFILE || '').trim();
 const tunnelCommand = existsSync(localTunnel) ? localTunnel : 'tunnel-client';
 
 if (tunnelProfile) {
+  const deadline=Date.now()+10000;
+  while(Date.now()<deadline) {
+    try {
+      const r=await fetch('http://127.0.0.1:3100/healthz');
+      if(r.ok) break;
+    } catch (_) {}
+    await new Promise((r)=>setTimeout(r,250));
+  }
+
   console.log(`Scout Lab: starting OpenAI Secure MCP Tunnel profile "${tunnelProfile}"...`);
   tunnel = spawn(tunnelCommand, ['run', '--profile', tunnelProfile], {
     stdio: 'inherit',
@@ -38,18 +63,3 @@ if (tunnelProfile) {
     else if (signal) console.log(`Scout Lab: Secure MCP Tunnel stopped (${signal}).`);
   });
 }
-
-function stopTunnel() {
-  if (tunnel && !tunnel.killed) tunnel.kill('SIGTERM');
-}
-process.once('SIGINT', () => {
-  stopTunnel();
-  process.exit(130);
-});
-process.once('SIGTERM', () => {
-  stopTunnel();
-  process.exit(143);
-});
-process.once('exit', stopTunnel);
-
-await import('../src/node-server.mjs');
