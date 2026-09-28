@@ -171,6 +171,8 @@ console.log('\nScout Lab: initializing the Secure MCP Tunnel profile…');
 const tunnelEnv={...process.env,CONTROL_PLANE_API_KEY:controlKey};
 execFileSync(client,[
   'init',
+  '--force',
+  '--sample','sample_mcp_remote_no_auth',
   '--profile',profile,
   '--tunnel-id',tunnelId,
   '--mcp-server-url','http://127.0.0.1:3100/mcp'
