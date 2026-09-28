@@ -249,7 +249,7 @@ export async function publishChatGPTMailroomRelay(db, payload) {
 
   for (const record of records) {
     const messageKey = keyFor(record);
-    await db.prepare(\`INSERT INTO mail_messages
+    await db.prepare(`INSERT INTO mail_messages
       (message_key,gmail_message_id,subject,sender,summary,category,received_at,source_timestamp,run_id,first_seen_at,last_seen_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(message_key) DO UPDATE SET
@@ -261,7 +261,7 @@ export async function publishChatGPTMailroomRelay(db, payload) {
         received_at=excluded.received_at,
         source_timestamp=excluded.source_timestamp,
         run_id=excluded.run_id,
-        last_seen_at=excluded.last_seen_at\`)
+        last_seen_at=excluded.last_seen_at`)
       .bind(
         messageKey,
         record.gmailMessageId || null,
@@ -278,11 +278,11 @@ export async function publishChatGPTMailroomRelay(db, payload) {
   }
 
   await db.batch([
-    db.prepare(\`INSERT INTO feed_snapshots_v21
+    db.prepare(`INSERT INTO feed_snapshots_v21
       (feed,run_id,source,source_timestamp,researched_at,published_at,checked_at,record_count,records_json,created_at)
-      VALUES ('emails',?,?,?,?,?,?,?,?,?)\`)
+      VALUES ('emails',?,?,?,?,?,?,?,?,?)`)
       .bind(runId,'chatgpt_workspace_agent+gmail_relay',researchedAt,researchedAt,now,now,records.length,JSON.stringify(records),now),
-    db.prepare(\`UPDATE task_runs_v21 SET
+    db.prepare(`UPDATE task_runs_v21 SET
       status='completed',
       source='chatgpt_workspace_agent+gmail_relay',
       source_timestamp=?,
@@ -296,7 +296,7 @@ export async function publishChatGPTMailroomRelay(db, payload) {
       publish_nonce_hash=NULL,
       publish_nonce_expires_at=NULL,
       published_at=?
-      WHERE id=?\`)
+      WHERE id=?`)
       .bind(
         researchedAt,
         now,
@@ -314,8 +314,8 @@ export async function publishChatGPTMailroomRelay(db, payload) {
 
 export async function failChatGPTMailroomRelay(db, runId, error) {
   const now = new Date().toISOString();
-  await db.prepare(\`UPDATE task_runs_v21
+  await db.prepare(`UPDATE task_runs_v21
     SET status='failed',finished_at=?,checked_at=?,error=?
-    WHERE id=? AND kind='mailroom' AND status IN ('queued','running')\`)
+    WHERE id=? AND kind='mailroom' AND status IN ('queued','running')`)
     .bind(now,now,clean(error?.message || error || 'ChatGPT Mailroom relay failed.',1500),runId).run();
 }
