@@ -517,23 +517,31 @@ async function runScout() {
 async function runMailRefresh() {
   if (state.pendingMailRefresh) return;
   state.pendingMailRefresh = true; state.emails.error = ''; render();
-  $('announce').textContent = 'Starting a ChatGPT mailroom task.';
+  $('announce').textContent = 'Starting the Scout Lab Mailroom refresh.';
   try {
     const data = await request('/mailroom/refresh', { method: 'POST', body: JSON.stringify({ requestedAt: isoNow() }) });
-    $('announce').textContent = `ChatGPT mailroom run ${data.run?.id || ''} started.`;
+    $('announce').textContent = `Mailroom run ${data.run?.id || data.runId || ''} started.`;
     state.active = 'history';
     await refreshAll({ quiet: true });
     const start = Date.now();
     while (Date.now() - start < 180000) {
       await new Promise((r) => setTimeout(r, 4000));
       await refreshAll({ quiet: true });
-      const run = state.history.records.find((x) => x.id === data.run?.id);
-      if (run && ['completed', 'failed'].includes(run.status)) break;
+      const runId = data.run?.id || data.runId;
+      const run = runId ? state.history.records.find((x) => x.id === runId) : null;
+      if (!runId || (run && ['completed', 'failed'].includes(run.status))) break;
     }
   } catch (error) {
-    state.emails.error = error.message;
-    $('announce').textContent = 'The ChatGPT mailroom task could not be started.';
-  } finally { state.pendingMailRefresh = false; await refreshAll({ quiet: true }); render(); }
+    const message = String(error?.message || error || '');
+    state.active = 'emails';
+    state.emails.error = message;
+    $('announce').textContent = 'Opening ChatGPT Scheduled so the Scout Lab Mailroom task can be run from ChatGPT.';
+    window.open('https://chatgpt.com/schedules', '_blank', 'noopener,noreferrer');
+  } finally {
+    state.pendingMailRefresh = false;
+    await refreshAll({ quiet: true });
+    render();
+  }
 }
 
 function selectFeed(feed) { state.active = feed; $('logs').scrollTop = 0; render(); }
