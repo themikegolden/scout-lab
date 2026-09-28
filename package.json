@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node --env-file-if-exists=.env.local scripts/start-local.mjs",
-    "local": "node --env-file-if-exists=.env.local scripts/start-local.mjs",\n    "setup:mailroom": "node scripts/setup-mailroom.mjs",
+    "local": "node --env-file-if-exists=.env.local scripts/start-local.mjs",
+    "setup:mailroom": "node scripts/setup-mailroom.mjs",
     "check": "npm run build:widget && node --check src/worker.mjs && node --check src/node-server.mjs && node --check src/sqlite-d1-adapter.mjs && node --check src/local-seed.mjs && node --check public/app-v21.js && node tests/static-check.mjs && node tests/v22-dual-surface-check.mjs",
     "build:widget": "node scripts/build-chatgpt-widget.mjs",
     "dev:cloudflare": "npm run build:widget && wrangler dev",
